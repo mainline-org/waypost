@@ -5,7 +5,7 @@ RFC 定义可以据以实现和验证的公开行为：目的、范围、契约�
 | RFC | 状态 | 配套资料 |
 |---|---|---|
 | [0001：异步信箱与记忆交换](0001-async-mailbox-and-memory-sync.md) | Draft / implementation baseline | [性质与验证计划](0001-properties.md) |
-| [0002：管理 Dashboard 与内容检查](0002-operator-dashboard.md) | Proposed / Step 2 | [Rust 数据模型](../design/0001-rust-data-model.md) |
+| [0002：管理 Dashboard 与内容检查](0002-operator-dashboard.md) | Draft / implementation baseline | [Rust 数据模型](../design/0001-rust-data-model.md) |
 
 ## 变更约定
 
