@@ -1,0 +1,51 @@
+[package]
+name = "waypost"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "Apache-2.0"
+description = "Durable asynchronous messaging and memory exchange for agents"
+repository = "https://github.com/mainline-org/waypost"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "waypost"
+path = "src/bin/waypost.rs"
+required-features = ["native"]
+
+[features]
+default = ["native"]
+native = ["dep:rusqlite", "dep:tokio", "dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:bytes"]
+cloudflare = ["dep:worker", "dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_jcs = "0.2"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+hex = "0.4"
+getrandom = { version = "0.2", features = ["js"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+futures-util = "0.3"
+rusqlite = { version = "0.39", features = ["bundled"], optional = true }
+tokio = { version = "1", features = ["rt", "net", "signal", "time", "macros"], optional = true }
+hyper = { version = "1", features = ["server", "http1"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
+http-body-util = { version = "0.1", optional = true }
+bytes = { version = "1", optional = true }
+worker = { version = "0.8.7", features = ["d1"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+
+[dev-dependencies]
+proptest = "1.12"
+tempfile = "3"
+
+[profile.release]
+lto = true
+opt-level = "s"
