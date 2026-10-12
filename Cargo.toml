@@ -27,6 +27,9 @@ serde_jcs = "0.2"
 regex = "1"
 sha2 = "0.10"
 hmac = "0.12"
+hpke = { version = "0.14.1", default-features = false, features = ["alloc", "x25519", "chacha"] }
+rand_chacha = "0.10"
+zeroize = "1"
 base64 = "0.22"
 hex = "0.4"
 getrandom = { version = "0.2", features = ["js"] }

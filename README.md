@@ -1,49 +1,93 @@
 # Waypost
 
-**面向个人 Agent 的持久通信与记忆交换服务。**
+**让你的助手有一个共同的信箱，也有一份可以接着使用的资料。**
 
-[![Checks](https://github.com/mainline-org/waypost/actions/workflows/ci.yml/badge.svg)](https://github.com/mainline-org/waypost/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+你让一个助手整理资料，另一个助手起草文章。前者已经找到了线索，后者却还在等你复制粘贴。换一台电脑、换一个助手，这段交接往往又要重来。
 
-Waypost 为独立运行的助手提供共同的通信入口。Agent 可以通过 MCP 或 HTTP 投递消息、读取授权记忆和交换资料；用户通过 Dashboard 管理连接、检查内容与配置隐私规则。
+Waypost 保存这段交接。助手把消息和资料送到你的空间，获得授权的另一方随后读取。收件人暂时离线，消息仍然留着；连接中断后，助手可以找回原来的提交结果。
 
-消息和记忆保存在服务端，消费进度由每个客户端独立维护。助手暂时离线、切换运行环境或轮换凭据后，仍可恢复原提交并继续收取。Waypost 不依赖某个模型供应商或助手产品。
+你在 Dashboard 中管理接入、查看通信和设置隐私规则。每位用户使用独立空间，助手只获得你授予的权限。
 
-[快速开始](#快速开始) · [连接 Agent](#连接-agent) · [完整示例](docs/demo.md) · [Cloudflare 部署](docs/deployment.md) · [协议设计](docs/rfcs/README.md)
+[开始使用](#开始使用) · [接入第一个助手](#接入第一个助手) · [发出第一封消息](#发出第一封消息) · [数据与隐私](#数据与隐私) · [自己运行](#自己运行-waypost)
 
-## 核心能力
+## 开始使用
 
-| 能力 | 行为 |
+如果管理员已经为你开好了空间，你需要两样东西：**Dashboard 地址**和**用户登录凭据**。打开地址，输入凭据，就能进入自己的空间。
+
+这份凭据用于管理你的空间。接入助手时，Waypost 会另外生成一份连接凭据。请分别保存；给助手的是连接凭据。
+
+如果你准备自己运行服务，可以先看下方的[启动步骤](#自己运行-waypost)。启动后，同样从 Dashboard 开始。
+
+## 接入第一个助手
+
+在 Dashboard 中点击「接入 Agent」，为助手取一个容易辨认的名字，例如「资料助手」。Waypost 会生成连接信息，其中包含 MCP 地址和连接凭据。
+
+把这些信息添加到助手的 HTTP MCP 配置中，并加载 [Waypost 使用 Skill](skills/waypost/SKILL.md)。不同助手的配置界面各有差异，需要填写的信息相同：
+
+| 设置 | 填写内容 |
 |---|---|
-| 异步通信 | 单向通知、直接提问与回复、线程及显式收件人 |
-| 可恢复提交 | 持久 request ID、幂等投递、原提交状态查询 |
-| 独立消费 | 每个 Consumer 有自己的收取位置与 received / processed 回执 |
-| 版本化记忆 | snapshot、delta、修订历史、CAS、显式删除标记和固定版本分页 |
-| 资料交换 | 上传与封存分离，校验实际长度和 SHA-256，已封存内容不可变 |
-| 可携带导出 | SQLite 资料清单、来源信息、历史删除标记与原始文件组成完整资料包 |
-| Dashboard | 空间与 Agent 管理、活动与内容检查、记忆修订查看、凭据撤销 |
-| 通信隐私 | 选择参与 Agent，按本地规则脱敏或阻止，审计不保存原敏感匹配值 |
+| 服务地址 | 连接信息中的 `mcp_url`，以 `/mcp` 结尾 |
+| 请求头名称 | `Authorization` |
+| 请求头值 | `Bearer ` 加上连接凭据，中间保留一个空格 |
 
-## 架构
+**原始连接凭据只展示一次。** 保存到助手的私密配置中。遗失后可以撤销旧凭据，重新签发。
 
-```mermaid
-flowchart LR
-    A[个人 Agent] <-->|MCP / HTTP| W[Waypost · Rust]
-    B[其他助手与客户端] <-->|MCP / HTTP| W
-    U[用户] --> D[Dashboard]
-    D --> W
-    W --> SQL[(SQLite / Cloudflare D1)]
-    W --> O[(本地对象存储 / 私有 R2)]
-    A --> L[(客户端 SQLite\n内容、待处理项与出站队列)]
-```
+接好后，请助手执行：
 
-SQLite / D1 保存身份、授权、提交、投递和版本等结构化状态。对象存储保存不可变正文、资料及完整版本 manifest。原生服务和 Cloudflare Worker 共用领域规则。
+> 通过 Waypost 查看我的身份、可以使用的能力和默认收件人。
 
-参考客户端先在本机 SQLite 原子保存完整输入、待处理状态和待 ACK，再向服务确认收取。`received` 表示已可靠保存；`processed` 由客户端在实际处理后明确确认。Dashboard 检查不会推进客户端回执。
+助手应返回它的身份、权限和使用上限。出现这个结果，说明连接已建立。接入方还需要具备 HTTP 文件上传与下载能力，才能交换附件和完整资料。
 
-## 快速开始
+## 发出第一封消息
 
-需要 Rust 1.91 或更新版本。
+先试一条简单的通知：
+
+> 通过 Waypost 给默认收件人发一条消息，主题是「资料已整理」，正文是「我已经整理好本周的资料，可以开始写作了」。
+
+回到 Dashboard，打开「消息」。你应该能看到这条通知，点开后可以读到完整正文。默认收件人是你的用户入口，所以第一封消息会送给你。
+
+之后可以接入第二个助手。向另一个助手发信，需要为发信方授予该收件人的权限；共享记忆也需要明确授权到对应集合。连接信息中返回的权限决定它实际可以访问什么。详细配置见[接入与授权](docs/user-guide.md)。
+
+消息送达后，收件助手还需要主动读取。Waypost 保存投递与收取记录；助手何时检查信箱、何时执行任务，由它所在的运行环境安排。
+
+## 把资料交给另一个助手
+
+消息适合告诉对方「发生了什么」，资料适合让对方继续工作。你可以让助手上传文件，再把资料附在消息里；也可以把一组文件保存在记忆集合中，持续更新。
+
+例如，资料助手保存了访谈笔记，写作助手获得该集合的读取权限。资料更新后，写作助手可以读取新的版本，也可以指定旧版本核对引用。历史中的删除标记会保留，便于追溯变化。
+
+上传和封存是两个步骤。Waypost 检查实际文件大小与 SHA-256，确认字节一致后才接受封存。已封存资料保持不变；修改内容时，上传新的资料。
+
+想看完整过程，可以运行[双向通信与记忆交换示例](docs/demo.md)。它包含收信、回复、资料更新、重启恢复和完整资料导出。
+
+## 断开以后，怎样接着用
+
+每个客户端分别记录自己的收取进度。一个助手读过消息，不会替另一个助手完成确认。
+
+两种回执也有不同含义：
+
+- `received`：客户端已可靠保存收到的内容。
+- `processed`：客户端已完成处理，并明确确认。
+
+在 Dashboard 中查看消息，不会替助手发送回执。投递遇到断线时，助手应沿用同一个请求 ID，查询或恢复原来的提交；参考客户端已经实现了这套恢复流程。
+
+## 数据与隐私
+
+**每位用户拥有独立 Space。** 用户登录只能查看和管理自己的空间。助手的消息、资料、记忆和游标也绑定到所属空间，修改 URL 或猜测资源 ID 不会获得另一个用户的数据。
+
+**内容由服务端加密保存，读取时由服务端解密。** 原生运行默认生成独立加密密钥，生产 Worker 要求配置加密密钥。消息正文、附件、完整记忆清单，以及数据库中的消息主题、文件名、记忆路径和元数据都受保护。
+
+这种方式保留了 Dashboard 内容查看和服务端隐私过滤。部署管理员仍能访问服务运行时与解密密钥；请选择你信任的部署方。身份、授权关系、时间、大小和内容类型等运行信息仍保存在数据库中。
+
+隐私规则可以在发布前脱敏或阻止指定内容，包括邮箱、手机号、常见服务凭据、敏感字段和自定义规则。无法检查的图片、PDF 与二进制附件，默认阻止通过受保护的通信分享。
+
+规则只能识别它覆盖的内容。更新规则不会改写已发布历史，逻辑删除也不会自动抹除历史文件和客户端副本。管理员可以清理过期暂存上传与未发布对象；封存资料和历史记忆会保留。
+
+已有部署升级后，需要迁移旧数据，才能让历史内容也得到加密保护。密钥保管、旧数据迁移和清理步骤见[安全与数据管理](docs/security.md)。
+
+## 自己运行 Waypost
+
+需要 Rust 1.91 或更新版本。在终端中运行：
 
 ```bash
 git clone https://github.com/mainline-org/waypost.git
@@ -52,84 +96,30 @@ cargo run --release -- init --data ./var
 cargo run --release -- serve --data ./var
 ```
 
-打开 <http://127.0.0.1:8787/dashboard>，使用 `var/admin-secret` 中的管理凭据登录。创建空间、接入 Agent，并将只展示一次的连接凭据保存在助手的私密配置中。
+打开 <http://127.0.0.1:8787/dashboard>，使用 `var/admin-secret` 中的部署管理员凭据登录。新建一个空间，然后点击「用户登录凭据」，为该空间的用户签发独立凭据。个人自用也可以直接从管理员界面接入助手。
 
-默认只监听本机。`WAYPOST_ADMIN_SECRET` 可指定管理凭据，`WAYPOST_PUBLIC_ORIGIN` 可指定实际服务入口；Agent 使用独立限权凭据。
+服务默认只监听本机。数据保存在 `var/`，加密密钥默认保存在 `var/encryption-keys`。请单独备份密钥，妥善保管；丢失密钥后，历史密文无法恢复。
 
-也可通过 Docker 运行：
+Docker 与 Cloudflare 的启动、HTTPS、备份和升级流程见[部署说明](docs/deployment.md)。多人共用服务时，每位用户分别创建空间，并分别签发用户登录凭据。
 
-```bash
-docker compose up --build -d
-docker compose exec waypost cat /data/admin-secret
-```
+## 遇到问题时
 
-持久数据位于命名 volume。HTTPS 入口、Cloudflare D1/R2、备份和回滚见 [部署说明](docs/deployment.md)。
-
-## 连接 Agent
-
-服务提供 Streamable HTTP MCP，地址为 `<服务入口>/mcp`。客户端使用独立 Agent 凭据发送 `Authorization: Bearer <token>`。
-
-在支持 HTTP MCP 的助手中添加连接，并加载 [Waypost Skill](skills/waypost/SKILL.md)。Skill 说明身份与能力发现、可靠投递、资料上传、记忆同步和消费确认的流程。首次调用 `waypost_describe`，以服务返回的身份、授权、集合和上限为准。
-
-| MCP 工具 | 用途 |
+| 情况 | 可以先做什么 |
 |---|---|
-| `waypost_describe` | 查看当前身份、授权、集合和能力 |
-| `waypost_send` | 投递消息或回复 |
-| `waypost_message_get` | 获取授权消息的完整内容 |
-| `waypost_inbox` | 收取消息、记忆修订和回执事件 |
-| `waypost_ack` | 确认收取或处理，并保存检查点 |
-| `waypost_status` | 恢复原提交结果 |
-| `waypost_blob_prepare` | 申请资料上传 |
-| `waypost_blob_commit` | 校验并封存资料 |
-| `waypost_blob_get` | 获取授权资料及下载信息 |
-| `waypost_memory_publish` | 发布 snapshot 或 delta |
-| `waypost_memory_read` | 读取固定记忆版本 |
+| 助手连不上 | 核对地址以 `/mcp` 结尾，请求头包含 `Bearer ` 和当前凭据 |
+| 能连接，但操作被拒绝 | 先让助手查看身份与权限；检查收件人或记忆集合是否已授权 |
+| 发信时断线 | 沿用原请求 ID，查询提交状态；确认结果后再继续 |
+| 消息已投递，助手没有行动 | 检查助手宿主是否安排了收信和任务执行 |
+| 凭据遗失或泄露 | 撤销旧凭据，再签发新的连接凭据 |
+| 升级后历史内容不能读取 | 检查加密密钥与旧数据迁移是否完成，按[安全说明](docs/security.md)恢复 |
 
-Blob 原始字节通过工具返回的受保护 HTTP 地址上传与下载。接入方需要实际具备这些 HTTP 操作能力；任务调度与模型执行由助手宿主负责。
+## 进一步阅读
 
-## 完整示例
-
-本仓库提供两类可运行示例：
-
-- [官方 MCP SDK 客户端](examples/mcp-client)：初始化、工具发现、稳定投递与完整正文读取。
-- [双向通信与记忆交换](docs/demo.md)：两个参考助手、记忆修订、隐私过滤、SQLite 消费、重启恢复和完整资料导出。
-
-原生服务启动后，可运行完整示例：
-
-```bash
-WAYPOST_ADMIN_SECRET="$(cat var/admin-secret)" python3 examples/demo.py --output var/demo
-```
-
-示例创建独立空间，输出 Consumer SQLite 数据库和 `portable-memory.zip`。示例中的助手是参考身份，实际产品仍需用户配置连接。
-
-## 隐私与授权
-
-管理凭据用于控制面；Agent 凭据按空间、身份、操作和资源授权。观察消息不会自动获得私有记忆或未分享资料的读取权。
-
-隐私策略按发信方或收信方选择 Agent，支持邮箱、手机号、身份号码、常见服务凭据、敏感字段、字面词与自定义正则。服务在发布前处理正文及可检查的 UTF-8 资料；无法检查的图片、PDF 和二进制附件默认阻止分享。
-
-规则只覆盖已配置的检测范围。更新策略不会改写已发布历史，逻辑删除也不会自动删除历史字节或客户端副本。具体语义见 [隐私策略 RFC](docs/rfcs/0003-agent-privacy-policies.md)。
-
-## 开发与验证
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets --locked -- -D warnings
-cargo test --all-targets --locked
-cargo build --locked
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-CI 验证原生、Wasm 和实际容器运行，原生检查包含官方 MCP SDK 与完整示例。公开行为、随机操作性质、故障恢复及验证边界见 [验证记录](docs/validation.md)。
-
-## 设计文档
-
-- [协议 RFC](docs/rfcs/0001-async-mailbox-and-memory-sync.md)、[性质与约束](docs/rfcs/0001-properties.md)
-- [Dashboard](docs/rfcs/0002-operator-dashboard.md)、[隐私策略](docs/rfcs/0003-agent-privacy-policies.md)
-- [领域术语](CONTEXT.md)、[Rust 模型](docs/design/0001-rust-data-model.md)、[测试契约](docs/design/0002-property-test-contracts.md)
-- [内部存储边界 ADR](docs/adr/0001-internal-sql-driver.md)
-- [协议参考](docs/research/0001-protocol-precedents.md)、[Nowledge Mem 研究](docs/research/0002-nowledge-mem.md)
-
-## 许可证
+- [接入与授权](docs/user-guide.md)：多助手通信和记忆共享。
+- [完整示例](docs/demo.md)：可运行的双向交流与资料导出。
+- [安全与数据管理](docs/security.md)：隔离、加密、迁移与清理。
+- [部署说明](docs/deployment.md)：本机、Docker 与 Cloudflare。
+- [验证记录](docs/validation.md)：已验证的行为和验证范围。
+- [协议与设计](docs/rfcs/README.md)：供客户端开发者查阅。
 
 Waypost 使用 [Apache License 2.0](LICENSE)。

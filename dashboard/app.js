@@ -12,8 +12,8 @@ async function api(path, method = 'GET', body) {
   if (!response.ok || !result.ok) {if (response.status === 401) showLogin(); throw new Error(result.error?.message || `HTTP ${response.status}`);}
   return result.data;
 }
-function showLogin() {csrf = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
-async function entered(session) {csrf = session.csrf_token; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
+function showLogin() {csrf = ''; spaces = []; actors = []; sid = ''; finishCreation(); $('#detail').close(); $('#detail-title').textContent = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
+async function entered(session) {csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
 async function registry(kind, space_id) {
   let cursor = null; const items = [];
   do {const result = await api('/admin/v0/registry', 'POST', {kind, ...(space_id ? {space_id} : {}), cursor, limit: 20}); items.push(...result.items); cursor = result.has_more ? result.next_cursor : null;} while (cursor);
@@ -109,7 +109,7 @@ function renderTable(items) {
         if (!$('#detail').open) $('#detail').showModal();
       } else showDetail(titles[tab], item);
     }));
-    if (tab === 'tokens' && !item.revoked_at) action.append(button('撤销', async () => {await api(`/admin/v0/tokens/${item.token_id}`, 'DELETE', {}); await load();}));
+    if (tab === 'tokens' && !item.revoked_at) action.append(button('撤销', async () => {await api(`/admin/v0/spaces/${sid}/tokens/${item.token_id}`, 'DELETE', {}); await load();}));
     row.append(action); table.append(row);
   }
   wrap.append(table); $('#content').append(wrap);
@@ -171,7 +171,7 @@ $('#add-agent').addEventListener('click', () => busy($('#add-agent'), async () =
   if (!task.collection) {task.collection = await api(root + '/collections', 'POST', {request_id: task.prefix + '-collection', source_actor_id: task.actor.actor_id, display_name: task.name + ' · 记忆', scope: 'personal/default'}); saveCreation(task);}
   let credential;
   while (!credential?.token) {
-    if (task.revoke_token_id) {await api(`/admin/v0/tokens/${task.revoke_token_id}`, 'DELETE', {}); delete task.revoke_token_id; task.token_request_id = crypto.randomUUID(); saveCreation(task);}
+    if (task.revoke_token_id) {await api(`/admin/v0/spaces/${task.sid}/tokens/${task.revoke_token_id}`, 'DELETE', {}); delete task.revoke_token_id; task.token_request_id = crypto.randomUUID(); saveCreation(task);}
     if (!task.token_request_id) {task.token_request_id = task.prefix + '-token'; saveCreation(task);}
     credential = await api(root + '/tokens', 'POST', {request_id: task.token_request_id, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, scopes: ['message.send', 'message.read', 'receipt.write', 'blob.write', 'memory.write', 'memory.read'], resource_grants: {}});
     if (!credential.token) {task.revoke_token_id = credential.token_id; saveCreation(task);}
@@ -180,3 +180,12 @@ $('#add-agent').addEventListener('click', () => busy($('#add-agent'), async () =
   sid = task.sid; finishCreation(); await loadSpaces();
 }));
 api('/admin/session').then(entered).catch(() => showLogin());
+
+$('#owner-credential').addEventListener('click', () => busy($('#owner-credential'), async () => {
+  if (!sid) throw new Error('先创建或选择一个用户空间。');
+  const path = `/admin/v0/spaces/${sid}/owner-credential`;
+  const current = await api(path);
+  if (current.version && !confirm('重新签发会使旧用户凭据和登录会话失效。继续签发？')) return;
+  const result = await api(path, 'POST', {expected_version: current.version});
+  showDetail('用户登录凭据 · 只展示一次', {dashboard_url: `${location.origin}/dashboard`, space_id: sid, credential: result.credential, note: '这份凭据只管理当前用户空间。通过私密渠道交给该用户；Agent 使用另外签发的连接凭据。'});
+}));

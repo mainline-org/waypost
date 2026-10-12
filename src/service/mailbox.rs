@@ -12,25 +12,40 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         operation: &str,
         key: &str,
     ) -> Result<Option<Row>> {
-        let rows=self.db.query(Statement::new("SELECT * FROM submissions WHERE space_id=? AND producer_id=? AND operation=? AND request_id=?",vec![p.space_id.clone().into(),p.actor_id.clone().into(),operation.into(),key.into()])).await?;
+        let rows = self
+            .db
+            .query(Statement::new(
+                crate::storage::queries::SUBMISSION_BY_REQUEST,
+                vec![
+                    p.space_id.clone().into(),
+                    p.actor_id.clone().into(),
+                    operation.into(),
+                    key.into(),
+                ],
+            ))
+            .await?;
         Ok(rows.first().cloned())
     }
     pub(crate) fn existing_result(&self, row: &Row, fp: &str) -> Result<Option<Value>> {
-        if hex::encode(blob(row, "fingerprint")?) != fp {
+        let submission = crate::storage::rows::Submission::decode(row)?;
+        if hex::encode(&submission.fingerprint) != fp {
             return Err(Error::new(
                 "IDEMPOTENCY_CONFLICT",
                 "Request ID was used with different content.",
             ));
         }
-        match text(row, "state")?.as_str() {
-            "committed" => Ok(Some(self.committed_result(row)?)),
-            "failed" => Err(recorded_error(row)?),
+        match submission.state {
+            crate::storage::rows::SubmissionState::Committed => {
+                Ok(Some(self.committed_result(row)?))
+            }
+            crate::storage::rows::SubmissionState::Failed => Err(recorded_error(row)?),
             _ => Ok(None),
         }
     }
     pub(crate) fn committed_result(&self, row: &Row) -> Result<Value> {
-        let op = text(row, "operation")?;
-        let resource = text(row, "resource_id")?;
+        let submission = crate::storage::rows::Submission::decode(row)?;
+        let op = submission.operation;
+        let resource = submission.resource_id;
         match op.as_str() {
             "message.send" => Ok(
                 json!({"submission_state":"committed","resource_id":resource,"message_id":resource,"thread_id":text(row,"thread_id")?,"committed_at":stamp(integer(row,"committed_at")?)?}),
@@ -70,7 +85,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         ];
         parameters.append(&mut args);
         let sql = format!(
-            "INSERT OR IGNORE INTO submissions(submission_id,space_id,producer_id,operation,request_id,fingerprint,resource_id,thread_id,state,created_at) SELECT ?,?,?,?,?,?,?,?,'reserved',? WHERE {authority}"
+            "INSERT INTO submissions(submission_id,space_id,producer_id,operation,request_id,fingerprint,resource_id,thread_id,state,created_at) SELECT ?,?,?,?,?,?,?,?,'reserved',? WHERE {authority} ON CONFLICT(space_id,producer_id,operation,request_id) DO NOTHING"
         );
         let guard = (
             "EXISTS(SELECT 1 FROM submissions WHERE submission_id=? AND state='reserved')".into(),
@@ -108,11 +123,11 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         bytes: &[u8],
         content_type: &str,
     ) -> Result<Row> {
-        let id = text(row, "submission_id")?;
+        let id = crate::storage::rows::Submission::decode(row)?.id;
+        self.journal_object(p, &id, key).await?;
         let expected = Sha256::digest(bytes).to_vec();
         let object = self
-            .objects
-            .create_only(key, bytes, content_type, &expected)
+            .object_create(&p.space_id, key, bytes, content_type, &expected)
             .await?;
         let (authority, args) = self.authority_guard(p);
         let mut parameters = vec![
@@ -292,7 +307,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             }
         };
         let input = filtered.input;
-        let body_key = format!("body_{message_id}_p{}", filtered.revision);
+        let body_key = self.storage_key(
+            &p.space_id,
+            &format!("body_{message_id}_p{}", filtered.revision),
+        );
         let mut published = serde_json::to_value(&input).map_err(|_| Error::storage())?;
         published
             .as_object_mut()
@@ -379,7 +397,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             filtered.hits,
             Some(guard.clone()),
         ));
-        q.extend(push_rows("messages","space_id,message_id,submission_id,producer_id,thread_id,in_reply_to,kind,subject,body_ref,committed_at",vec![vec![p.space_id.clone().into(),message_id.clone().into(),sid.clone().into(),p.actor_id.clone().into(),tid.clone().into(),input.in_reply_to.into(),input.kind.as_str().into(),input.subject.into(),body_key.into(),now.into()]],Some(guard.clone())));
+        q.extend(push_rows("messages","space_id,message_id,submission_id,producer_id,thread_id,in_reply_to,kind,subject,body_ref,committed_at",vec![vec![p.space_id.clone().into(),message_id.clone().into(),sid.clone().into(),p.actor_id.clone().into(),tid.clone().into(),input.in_reply_to.into(),input.kind.as_str().into(),self.seal_field(&p.space_id,&format!("message/{message_id}/subject"),&input.subject)?.into(),body_key.into(),now.into()]],Some(guard.clone())));
         q.extend(push_rows(
             "message_recipients",
             "space_id,message_id,actor_id",
@@ -450,7 +468,9 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         args.extend(auth_args);
         let rows=self.db.query(Statement::new(format!("SELECT m.*,s.body_sha256,s.body_size FROM messages m JOIN submissions s ON s.submission_id=m.submission_id WHERE m.space_id=? AND m.message_id=? AND (?=1 OR m.producer_id=? OR EXISTS(SELECT 1 FROM message_recipients mr WHERE mr.space_id=m.space_id AND mr.message_id=m.message_id AND mr.actor_id=?)) AND {authority}"),args)).await?;
         let row = rows.first().ok_or_else(Error::not_found)?;
-        let bytes = self.objects.read(&text(row, "body_ref")?).await?;
+        let bytes = self
+            .object_read(&p.space_id, &text(row, "body_ref")?)
+            .await?;
         if bytes.len() as i64 != integer(row, "body_size")?
             || Sha256::digest(&bytes).as_slice() != blob(row, "body_sha256")?.as_slice()
         {
@@ -473,7 +493,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     }
     pub(crate) fn feed_cursor(&self, p: &Principal, position: u64) -> Result<String> {
         self.sign_cursor(&format!(
-            "f1|{}|{}|{}|{}|{}|{}|{}",
+            "f2|{}|{}|{}|{}|{}|{}|{}",
             p.space_id,
             p.actor_id,
             p.consumer_id,
@@ -486,7 +506,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     pub(crate) fn feed_position(&self, p: &Principal, cursor: &str) -> Result<u64> {
         let payload = self.verify_cursor(cursor)?;
         let fields = payload.split('|').collect::<Vec<_>>();
-        if fields.len() != 8 || fields[0] != "f1" {
+        if fields.len() != 8 || fields[0] != "f2" {
             return Err(Error::new("INVALID_CURSOR", "Invalid cursor."));
         }
         if fields[1] != p.space_id
@@ -578,6 +598,7 @@ pub(crate) fn recorded_error(r: &Row) -> Result<Error> {
         "UPLOAD_EXPIRED" => "UPLOAD_EXPIRED",
         "RESOURCE_LIMIT" => "RESOURCE_LIMIT",
         "PRIVACY_BLOCKED" => "PRIVACY_BLOCKED",
+        "SUBMISSION_EXPIRED" => "SUBMISSION_EXPIRED",
         _ => return Err(Error::storage()),
     };
     let mut e = Error::new(known, "The original submission failed.");

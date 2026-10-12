@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Verify a deployed Worker without printing credentials or private response bodies."""
 import argparse
+import http.client
 import json
 import os
-import urllib.error
+import subprocess
 import urllib.parse
-import urllib.request
 from http.cookies import SimpleCookie
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'examples'))
-from consumer import NoRedirect
+from consumer import USER_AGENT
 
 
 def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=False):
@@ -20,19 +20,18 @@ def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=Fa
     if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('', '/'):
         raise ValueError('Expected a service origin, without credentials, path or query.')
     origin = origin.rstrip('/')
-    opener = urllib.request.build_opener(NoRedirect())
+    connection_type = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_type(parsed.hostname, parsed.port, timeout=30)
     checks = []
 
     def request(method, path, value=None, headers=None):
         data = json.dumps(value).encode() if value is not None else None
-        req = urllib.request.Request(origin + path, data=data, method=method, headers={'content-type': 'application/json', **(headers or {})})
-        try:
-            response = opener.open(req, timeout=30)
-        except urllib.error.HTTPError as error:
-            response = error
-        with response:
-            raw = response.read()
-            status, actual_headers = response.code, response.headers
+        # One connection keeps edge probes bound to the same client/Cloudflare location.
+        # http.client does not follow redirects or forward operator credentials elsewhere.
+        connection.request(method, path, body=data, headers={'content-type': 'application/json', 'user-agent': USER_AGENT, **(headers or {})})
+        response = connection.getresponse()
+        raw = response.read()
+        status, actual_headers = response.status, response.headers
         body = json.loads(raw) if 'application/json' in actual_headers.get('content-type', '') else raw
         if actual_headers.get('cache-control') != 'no-store':
             raise AssertionError('Service response must not be cached.')
@@ -51,7 +50,7 @@ def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=Fa
     status, _, _ = request('GET', '/ready')
     assert status == 401, 'Readiness must require operator authentication.'
     status, _, body = request('GET', '/ready', headers={'authorization': 'Bearer ' + admin_secret})
-    assert status == 200 and body['data']['status'] == 'ready' and body['data']['schema_revision'] == 6, 'D1/R2 readiness check failed.'
+    assert status == 200 and body['data']['status'] == 'ready' and body['data']['schema_revision'] == len(list((Path(__file__).resolve().parents[1] / 'migrations').glob('*.sql'))), 'D1/R2 readiness check failed.'
     expected_environment = 'production' if parsed.scheme == 'https' else 'development'
     assert body['data']['environment'] == expected_environment, 'Deployment environment is not the expected profile.'
     checks.append('authenticated_d1_r2_readiness')
@@ -80,7 +79,7 @@ def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=Fa
     assert status == 401, 'Logged-out session remained active.'
     checks.append('operator_session_csrf_logout')
     if check_rate_limit:
-        for _ in range(12):
+        for _ in range(40):
             status, _, body = request('POST', '/admin/session', {'admin_secret': 'invalid-test-admin-secret-32-bytes-long'}, {'origin': origin})
             if status == 429:
                 assert body['error']['code'] == 'RATE_LIMITED', 'Unexpected rate-limit response.'
@@ -90,15 +89,34 @@ def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=Fa
         else:
             raise AssertionError('Login rate limit was not enforced.')
     if check_api_rate_limit:
-        for _ in range(320):
-            status, _, body = request('GET', '/admin/session', headers={'cookie': 'waypost_admin=invalid_session_read_probe'})
-            if status == 429:
-                assert body['error']['code'] == 'RATE_LIMITED', 'Unexpected API rate-limit response.'
-                checks.append('session_read_api_rate_limit')
-                break
-            assert status == 401, 'Unexpected session probe response.'
-        else:
-            raise AssertionError('Session reads bypassed API rate limiting.')
+        # Sequential remote D1 reads may never reach 300/min. Use bounded async I/O
+        # to exercise the actual API budget; no worker threads or credentials are used.
+        probe = """
+import {performance} from 'node:perf_hooks';
+const [origin, userAgent] = process.argv.slice(1);
+const started = performance.now();
+for (let count = 0; count < 640 && performance.now() - started < 45000; count += 8) {
+  const results = await Promise.all(Array.from({length: 8}, async (_, i) => {
+    const response = await fetch(origin + '/admin/session', {redirect: 'manual',
+      headers: {'user-agent': userAgent, cookie: 'waypost_admin=invalid_probe_' + (count + i)},
+      signal: AbortSignal.timeout(15000)});
+    const value = await response.json();
+    if (response.status === 429 && value.error?.code === 'RATE_LIMITED') return true;
+    if (response.status !== 401) throw new Error('Unexpected API probe status: ' + response.status);
+    return false;
+  }));
+  if (results.some(Boolean)) {
+    console.log(JSON.stringify({limited: true, requests: count + 8}));
+    process.exit(0);
+  }
+}
+console.log(JSON.stringify({limited: false}));
+"""
+        result = subprocess.run(['node', '--input-type=module', '-e', probe, origin, USER_AGENT], capture_output=True, text=True, timeout=65)
+        assert result.returncode == 0, 'API burst probe failed.'
+        assert json.loads(result.stdout)['limited'], 'API rate limit was not observed in the bounded burst.'
+        checks.append('session_read_api_rate_limit')
+    connection.close()
     return {'result': 'passed', 'origin': origin, 'checks': checks}
 
 

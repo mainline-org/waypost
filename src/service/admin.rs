@@ -5,12 +5,58 @@ use crate::{
 };
 
 impl<D: Database, O: ObjectStore> App<D, O> {
+    pub(super) async fn user_admin(
+        &self,
+        request: &Request,
+        body: Value,
+        space: &str,
+    ) -> Result<Value> {
+        if request.path == "/admin/v0/registry" && request.method == "POST" {
+            fields(&body, &["kind", "space_id", "cursor", "limit"])?;
+            if body.get("kind").and_then(Value::as_str) == Some("spaces") {
+                if body.get("cursor").is_some_and(|v| !v.is_null()) {
+                    return Err(Error::invalid("User Space listing has no cursor."));
+                }
+                if body
+                    .get("space_id")
+                    .is_some_and(|v| v.as_str() != Some(space))
+                {
+                    return Err(Error::not_found());
+                }
+                return Ok(
+                    json!({"items":[self.admin_space(space).await?],"has_more":false,"next_cursor":null}),
+                );
+            }
+            if body.get("space_id").and_then(Value::as_str) != Some(space) {
+                return Err(Error::not_found());
+            }
+            return self.admin_registry(body).await;
+        }
+        if request.path == "/admin/v0/spaces" && request.method == "GET" {
+            return Ok(json!({"spaces":[self.admin_space(space).await?]}));
+        }
+        let parts = request.path.split('/').collect::<Vec<_>>();
+        if parts.len() < 5
+            || parts[..4] != ["", "admin", "v0", "spaces"]
+            || parts[4] != space
+            || parts.get(5) == Some(&"owner-credential")
+        {
+            return Err(Error::not_found());
+        }
+        self.admin(request, body).await
+    }
     pub(crate) async fn admin(&self, request: &Request, body: Value) -> Result<Value> {
         let parts = request
             .path
             .trim_matches('/')
             .split('/')
             .collect::<Vec<_>>();
+        if request.method == "POST" && request.path == "/admin/v0/maintenance/encrypt" {
+            return self.encrypt_existing(body).await;
+        }
+        if request.method == "POST" && request.path == "/admin/v0/maintenance/cleanup" {
+            return self.admin_cleanup(body).await;
+        }
         if request.method == "POST" && parts.as_slice() == ["admin", "v0", "registry"] {
             return self.admin_registry(body).await;
         }
@@ -145,6 +191,52 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 return self
                     .admin_collection(sid, &text(&row, "resource_id")?)
                     .await;
+            }
+            if request.method == "POST" && parts.len() == 5 && parts[4] == "owner-credential" {
+                fields(&body, &["expected_version"])?;
+                let expected = body
+                    .get("expected_version")
+                    .and_then(Value::as_i64)
+                    .filter(|v| *v >= 0 && *v < i64::MAX)
+                    .ok_or_else(|| {
+                        Error::invalid("expected_version must be a nonnegative integer.")
+                    })?;
+                let credential =
+                    format!("wp_user_{}", URL_SAFE_NO_PAD.encode(random_bytes::<32>()?));
+                let digest = Sha256::digest(credential.as_bytes()).to_vec();
+                self.db.batch(vec![Statement::new("INSERT INTO space_admin_credentials(space_id,credential_digest,version,created_at) SELECT ?,?,1,? WHERE ?=0 ON CONFLICT(space_id) DO NOTHING",vec![sid.into(),digest.clone().into(),self.clock.now_ms().into(),expected.into()]),Statement::new("UPDATE space_admin_credentials SET credential_digest=?,version=version+1,revoked_at=NULL,created_at=? WHERE space_id=? AND version=?",vec![digest.clone().into(),self.clock.now_ms().into(),sid.into(),expected.into()])]).await?;
+                let rows=self.db.query(Statement::new("SELECT version FROM space_admin_credentials WHERE space_id=? AND credential_digest=?",vec![sid.into(),digest.into()])).await?;
+                let row = rows.first().ok_or_else(|| {
+                    Error::new(
+                        "REVISION_CONFLICT",
+                        "Owner credential changed; read its current version.",
+                    )
+                })?;
+                return Ok(
+                    json!({"space_id":sid,"credential":credential,"version":integer(row,"version")?,"credential_available":true}),
+                );
+            }
+            if request.method == "GET" && parts.len() == 5 && parts[4] == "owner-credential" {
+                let rows = self
+                    .db
+                    .query(Statement::new(
+                        "SELECT version FROM space_admin_credentials WHERE space_id=?",
+                        vec![sid.into()],
+                    ))
+                    .await?;
+                return Ok(
+                    json!({"space_id":sid,"version":rows.first().map(|r|integer(r,"version")).transpose()?.unwrap_or(0)}),
+                );
+            }
+            if request.method == "DELETE" && parts.len() == 5 && parts[4] == "owner-credential" {
+                fields(&body, &[])?;
+                self.db.batch(vec![Statement::new("UPDATE space_admin_credentials SET revoked_at=?,version=version+1 WHERE space_id=? AND revoked_at IS NULL",vec![self.clock.now_ms().into(),sid.into()])]).await?;
+                return Ok(json!({"revoked":true}));
+            }
+            if request.method == "DELETE" && parts.len() == 6 && parts[4] == "tokens" {
+                check_id(parts[5])?;
+                self.db.batch(vec![Statement::new("UPDATE tokens SET revoked_at=?,authority_version=authority_version+1 WHERE space_id=? AND token_id=? AND revoked_at IS NULL",vec![self.clock.now_ms().into(),sid.into(),parts[5].into()])]).await?;
+                return Ok(json!({"revoked":true}));
             }
             if request.method == "POST" && parts.len() == 5 && parts[4] == "inspect" {
                 return self.admin_inspect(sid, body).await;
@@ -555,7 +647,7 @@ pub(crate) fn admin_reservation(
     now: i64,
 ) -> Result<Statement> {
     Ok(Statement::new(
-        "INSERT OR IGNORE INTO admin_submissions(operation,request_id,fingerprint,space_id,resource_id,subresource_id,created_at) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO admin_submissions(operation,request_id,fingerprint,space_id,resource_id,subresource_id,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(operation,request_id) DO NOTHING",
         vec![
             op.into(),
             key.into(),

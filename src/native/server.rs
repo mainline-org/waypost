@@ -67,7 +67,10 @@ async fn respond(
             None => valid = false,
         }
     }
-    let max = if method == "PUT" && path.starts_with("/v0/uploads/") {
+    let max = if matches!(
+        crate::http::classify(&method, &path),
+        crate::http::Route::UploadContent(_)
+    ) {
         app.limits.max_blob_bytes as usize
     } else {
         app.limits.max_json_bytes

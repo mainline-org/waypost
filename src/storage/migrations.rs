@@ -1,0 +1,34 @@
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "0001_identity_mailbox.sql",
+        include_str!("../../migrations/0001_identity_mailbox.sql"),
+    ),
+    (
+        "0002_receipts.sql",
+        include_str!("../../migrations/0002_receipts.sql"),
+    ),
+    (
+        "0003_blobs_memory.sql",
+        include_str!("../../migrations/0003_blobs_memory.sql"),
+    ),
+    (
+        "0004_privacy.sql",
+        include_str!("../../migrations/0004_privacy.sql"),
+    ),
+    (
+        "0005_admin_sessions.sql",
+        include_str!("../../migrations/0005_admin_sessions.sql"),
+    ),
+    (
+        "0006_grant_integrity.sql",
+        include_str!("../../migrations/0006_grant_integrity.sql"),
+    ),
+    (
+        "0007_object_maintenance.sql",
+        include_str!("../../migrations/0007_object_maintenance.sql"),
+    ),
+    (
+        "0008_user_administration.sql",
+        include_str!("../../migrations/0008_user_administration.sql"),
+    ),
+];

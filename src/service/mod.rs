@@ -1,3 +1,4 @@
+use crate::storage::queries::guarded_inserts as push_rows;
 use crate::{
     domain::{FeedFilter, Principal, ResourceGrants},
     error::{Error, Result},
@@ -15,7 +16,9 @@ use std::{collections::BTreeMap, rc::Rc};
 mod admin;
 mod blobs;
 mod dashboard;
+mod encryption;
 mod mailbox;
+mod maintenance;
 mod mcp;
 mod memory;
 mod privacy;
@@ -74,18 +77,33 @@ pub struct App<D, O> {
     pub(crate) config: Config,
     pub(crate) clock: Rc<dyn Clock>,
     pub(crate) limits: Limits,
+    cursor_key: [u8; 32],
+    csrf_key: [u8; 32],
+    pub(crate) encryption: Option<encryption::Encryption>,
 }
 // SQL execution is sealed inside this crate; callers use supported runtimes and domain HTTP/MCP operations.
 #[allow(private_bounds)]
 impl<D: Database, O: ObjectStore> App<D, O> {
     pub fn new(db: D, objects: O, config: Config) -> Self {
         Self {
+            cursor_key: derive_key(&config.admin_secret, b"waypost-cursor-v2"),
+            csrf_key: derive_key(&config.admin_secret, b"waypost-admin-csrf-v2"),
+            encryption: None,
             db,
             objects,
             config,
             clock: Rc::new(SystemClock),
             limits: Limits::default(),
         }
+    }
+    pub fn with_cursor_secret(mut self, secret: &str) -> Result<Self> {
+        if secret.len() < 32 {
+            return Err(Error::invalid(
+                "Cursor secret must contain at least 32 bytes.",
+            ));
+        }
+        self.cursor_key = derive_key(secret, b"waypost-cursor-v2");
+        Ok(self)
     }
     pub fn with_clock(mut self, clock: Rc<dyn Clock>) -> Self {
         self.clock = clock;
@@ -122,10 +140,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     .map(str::to_owned)
             })
             .unwrap_or(trace);
-        if request.method == "GET"
-            && request.path.starts_with("/v0/blobs/")
-            && request.path.ends_with("/content")
-        {
+        if matches!(
+            crate::http::classify(&request.method, &request.path),
+            crate::http::Route::BlobContent(_)
+        ) {
             match self.blob_content(&request).await {
                 Ok(response) => return response,
                 Err(error) => {
@@ -155,63 +173,40 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             return Err(Error::forbidden());
         }
         if request.path.starts_with("/admin/v0/") {
-            self.admin_access(request).await?;
+            let scope = self.admin_access(request).await?;
             let value = crate::json::parse(&request.body, self.limits.max_json_bytes)?;
+            if let Some(space) = scope {
+                return self.user_admin(request, value, &space).await;
+            }
             return self.admin(request, value).await;
         }
         let principal = self.authenticate(request).await?;
-        let parts = request
-            .path
-            .trim_matches('/')
-            .split('/')
-            .collect::<Vec<_>>();
-        if request.method == "PUT"
-            && parts.len() == 4
-            && parts[0..2] == ["v0", "uploads"]
-            && parts[3] == "content"
-        {
-            return self.blob_put(&principal, parts[2], request).await;
+        use crate::http::{Route, classify};
+        let route = classify(&request.method, &request.path);
+        if let Route::UploadContent(id) = route {
+            return self.blob_put(&principal, id, request).await;
         }
         let value = crate::json::parse(&request.body, self.limits.max_json_bytes)?;
-        if request.method == "POST"
-            && parts.len() == 4
-            && parts[0..2] == ["v0", "uploads"]
-            && parts[3] == "commit"
-        {
-            return self.blob_commit(&principal, parts[2], value).await;
-        }
-        if request.method == "POST"
-            && parts.len() == 5
-            && parts[0..3] == ["v0", "memory", "collections"]
-        {
-            match parts[4] {
-                "revisions" => return self.memory_publish(&principal, parts[3], value).await,
-                "read" => return self.memory_read(&principal, parts[3], value).await,
-                _ => return Err(Error::not_found()),
-            }
-        }
-        match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/v0/describe") => self.describe(&principal).await,
-            ("POST", "/v0/uploads") => self.blob_prepare(&principal, value).await,
-            ("GET", path) if path.starts_with("/v0/blobs/") => {
-                self.blob_get(&principal, path.trim_start_matches("/v0/blobs/"))
-                    .await
-            }
-            ("POST", "/v0/messages") => self.send(&principal, value).await,
-            ("POST", "/v0/receipts") => self.ack(&principal, value).await,
-            ("POST", "/v0/inbox/read") => self.inbox(&principal, value).await,
-            ("POST", "/v0/submissions/status") => self.status(&principal, value).await,
-            ("GET", path) if path.starts_with("/v0/messages/") => {
-                self.message(&principal, path.trim_start_matches("/v0/messages/"))
-                    .await
-            }
+        match route {
+            Route::Describe => self.describe(&principal).await,
+            Route::UploadPrepare => self.blob_prepare(&principal, value).await,
+            Route::UploadCommit(id) => self.blob_commit(&principal, id, value).await,
+            Route::BlobMetadata(id) => self.blob_get(&principal, id).await,
+            Route::MessageSend => self.send(&principal, value).await,
+            Route::MessageGet(id) => self.message(&principal, id).await,
+            Route::Receipts => self.ack(&principal, value).await,
+            Route::Inbox => self.inbox(&principal, value).await,
+            Route::SubmissionStatus => self.status(&principal, value).await,
+            Route::MemoryPublish(id) => self.memory_publish(&principal, id, value).await,
+            Route::MemoryRead(id) => self.memory_read(&principal, id, value).await,
             _ => Err(Error::not_found()),
         }
     }
+
     pub(crate) fn admin_auth(&self, request: &Request) -> Result<()> {
         let supplied = bearer(request)?;
         if self.config.admin_secret.len() < 32 {
-            return Err(Error::storage());
+            return Err(Error::internal("invalid admin secret configuration"));
         }
         let expected = Sha256::digest(self.config.admin_secret.as_bytes());
         let actual = Sha256::digest(supplied.as_bytes());
@@ -229,68 +224,52 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let token = bearer(request)?;
         let digest = Sha256::digest(token.as_bytes()).to_vec();
         let now = self.clock.now_ms();
-        let rows=self.db.query(Statement::new("SELECT t.token_id,t.space_id,t.actor_id,t.consumer_id,t.authority_version AS credential_version,a.authority_version AS actor_version,c.view,c.view_revision,s.default_actor_id FROM tokens t JOIN actors a ON a.space_id=t.space_id AND a.actor_id=t.actor_id JOIN consumers c ON c.space_id=t.space_id AND c.consumer_id=t.consumer_id AND c.actor_id=t.actor_id JOIN spaces s ON s.space_id=t.space_id WHERE t.token_digest=? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>?) AND a.disabled=0 AND c.disabled=0",vec![digest.into(),now.into()])).await?;
+        let rows = self
+            .db
+            .query(Statement::new(
+                crate::storage::queries::AUTHENTICATE,
+                vec![digest.into(), now.into()],
+            ))
+            .await?;
         let row = rows.first().ok_or_else(Error::unauthenticated)?;
+        fn decoded<T: serde::de::DeserializeOwned>(row: &Row, key: &str) -> Result<T> {
+            serde_json::from_str(&text(row, key)?)
+                .map_err(|_| Error::internal("decode authentication grants"))
+        }
+        #[derive(serde::Deserialize)]
+        struct CollectionGrant {
+            collection_id: String,
+            action: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct FilterEntry {
+            dimension: String,
+            value: String,
+        }
         let token_id = text(row, "token_id")?;
-        let scopes = self
-            .db
-            .query(Statement::new(
-                "SELECT scope FROM token_scopes WHERE token_id=? ORDER BY scope",
-                vec![token_id.clone().into()],
-            ))
-            .await?
-            .iter()
-            .map(|r| text(r, "scope"))
-            .collect::<Result<Vec<_>>>()?;
-        let recipients = self
-            .db
-            .query(Statement::new(
-                "SELECT actor_id FROM token_recipients WHERE token_id=? ORDER BY actor_id",
-                vec![token_id.clone().into()],
-            ))
-            .await?
-            .iter()
-            .map(|r| text(r, "actor_id"))
-            .collect::<Result<Vec<_>>>()?;
-        let collections=self.db.query(Statement::new("SELECT collection_id,action FROM token_collections WHERE token_id=? ORDER BY collection_id,action",vec![token_id.clone().into()])).await?;
-        let references = self
-            .db
-            .query(Statement::new(
-                "SELECT blob_id FROM token_blob_grants WHERE token_id=? ORDER BY blob_id",
-                vec![token_id.clone().into()],
-            ))
-            .await?
-            .iter()
-            .map(|r| text(r, "blob_id"))
-            .collect::<Result<Vec<_>>>()?;
+        let scopes: Vec<String> = decoded(row, "scopes_json")?;
         let mut grants = ResourceGrants {
-            recipient_ids: recipients,
-            blob_reference_ids: references,
+            recipient_ids: decoded(row, "recipients_json")?,
+            blob_reference_ids: decoded(row, "blobs_json")?,
             ..Default::default()
         };
-        for row in collections {
-            if text(&row, "action")? == "read" {
-                grants
-                    .memory_read_collection_ids
-                    .push(text(&row, "collection_id")?);
-            } else {
-                grants
-                    .memory_write_collection_ids
-                    .push(text(&row, "collection_id")?);
+        for grant in decoded::<Vec<CollectionGrant>>(row, "collections_json")? {
+            match grant.action.as_str() {
+                "read" => grants.memory_read_collection_ids.push(grant.collection_id),
+                "write" => grants.memory_write_collection_ids.push(grant.collection_id),
+                _ => return Err(Error::internal("decode grant action")),
             }
         }
         let space_id = text(row, "space_id")?;
         let consumer_id = text(row, "consumer_id")?;
-        let filters=self.db.query(Statement::new("SELECT dimension,value FROM consumer_filters WHERE space_id=? AND consumer_id=? ORDER BY dimension,value",vec![space_id.clone().into(),consumer_id.clone().into()])).await?;
         let mut filter = FeedFilter::default();
-        for row in filters {
-            let v = text(&row, "value")?;
-            match text(&row, "dimension")?.as_str() {
-                "producer_ids" => filter.producer_ids.push(v),
-                "thread_ids" => filter.thread_ids.push(v),
-                "item_types" => filter.item_types.push(v),
-                "collection_ids" => filter.collection_ids.push(v),
-                _ => return Err(Error::storage()),
+        for entry in decoded::<Vec<FilterEntry>>(row, "filters_json")? {
+            match entry.dimension.as_str() {
+                "producer_ids" => filter.producer_ids.push(entry.value),
+                "thread_ids" => filter.thread_ids.push(entry.value),
+                "item_types" => filter.item_types.push(entry.value),
+                "collection_ids" => filter.collection_ids.push(entry.value),
+                _ => return Err(Error::internal("decode filter dimension")),
             }
         }
         let grant_fingerprint = fingerprint(&json!({"scopes":scopes,"grants":grants}))?;
@@ -350,8 +329,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         )
     }
     pub(crate) fn sign_cursor(&self, payload: &str) -> Result<String> {
-        let mut m = Hmac::<Sha256>::new_from_slice(self.config.admin_secret.as_bytes())
-            .map_err(|_| Error::storage())?;
+        let mut m =
+            Hmac::<Sha256>::new_from_slice(&self.cursor_key).map_err(|_| Error::storage())?;
         m.update(payload.as_bytes());
         Ok(format!(
             "{}.{}",
@@ -369,8 +348,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let tag = URL_SAFE_NO_PAD
             .decode(tag)
             .map_err(|_| Error::new("INVALID_CURSOR", "Invalid cursor."))?;
-        let mut m = Hmac::<Sha256>::new_from_slice(self.config.admin_secret.as_bytes())
-            .map_err(|_| Error::storage())?;
+        let mut m =
+            Hmac::<Sha256>::new_from_slice(&self.cursor_key).map_err(|_| Error::storage())?;
         m.update(&body);
         m.verify_slice(&tag)
             .map_err(|_| Error::new("INVALID_CURSOR", "Invalid cursor."))?;
@@ -388,7 +367,7 @@ pub(crate) fn bearer(request: &Request) -> Result<String> {
 }
 pub(crate) fn random_bytes<const N: usize>() -> Result<[u8; N]> {
     let mut b = [0; N];
-    getrandom::getrandom(&mut b).map_err(|_| Error::storage())?;
+    getrandom::getrandom(&mut b).map_err(|_| Error::internal("random identifier generation"))?;
     Ok(b)
 }
 pub(crate) fn random_id(prefix: &str) -> Result<String> {
@@ -416,37 +395,11 @@ pub(crate) fn uuid_uri() -> Result<String> {
         &h[20..]
     ))
 }
-pub(crate) fn push_rows(
-    table: &str,
-    columns: &str,
-    rows: Vec<Vec<Sql>>,
-    guard: Option<(String, Vec<Sql>)>,
-) -> Vec<Statement> {
-    if rows.is_empty() {
-        return vec![];
-    }
-    let width = rows[0].len();
-    let reserved = guard.as_ref().map(|x| x.1.len()).unwrap_or(0);
-    let chunk = ((100 - reserved) / width).max(1);
-    let mut result = Vec::new();
-    for rows in rows.chunks(chunk) {
-        let mut parameters = Vec::new();
-        let groups = rows
-            .iter()
-            .map(|r| {
-                parameters.extend(r.iter().cloned());
-                format!("({})", vec!["?"; width].join(","))
-            })
-            .collect::<Vec<_>>();
-        let mut sql = format!(
-            "INSERT OR IGNORE INTO {table}({columns}) SELECT * FROM (VALUES {})",
-            groups.join(",")
-        );
-        if let Some((g, p)) = &guard {
-            sql.push_str(&format!(" WHERE {g}"));
-            parameters.extend(p.iter().cloned());
-        }
-        result.push(Statement::new(sql, parameters));
-    }
-    result
+
+fn derive_key(secret: &str, label: &[u8]) -> [u8; 32] {
+    // HMAC accepts keys of any size. Labels isolate cursor and CSRF protocols.
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts arbitrary keys");
+    mac.update(label);
+    mac.finalize().into_bytes().into()
 }

@@ -25,12 +25,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         };
         Some(Response{status:200,headers:BTreeMap::from([("content-type".into(),content_type.into()),("cache-control".into(),"no-store".into()),("content-security-policy".into(),"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'".into()),("x-content-type-options".into(),"nosniff".into()),("referrer-policy".into(),"no-referrer".into())]),body:body.to_vec()})
     }
-    pub(crate) async fn admin_access(&self, request: &Request) -> Result<()> {
+    pub(crate) async fn admin_identity(&self, request: &Request) -> Result<Option<String>> {
+        match self.admin_auth(request) {
+            Ok(()) => return Ok(None),
+            Err(e) if e.code != "UNAUTHENTICATED" => return Err(e),
+            _ => {}
+        }
+        let credential = bearer(request)?;
+        let rows=self.db.query(Statement::new("SELECT space_id FROM space_admin_credentials WHERE credential_digest=? AND revoked_at IS NULL",vec![Sha256::digest(credential.as_bytes()).to_vec().into()])).await?;
+        Ok(Some(text(
+            rows.first().ok_or_else(Error::unauthenticated)?,
+            "space_id",
+        )?))
+    }
+    pub(crate) async fn admin_access(&self, request: &Request) -> Result<Option<String>> {
         if request.headers.contains_key("authorization") {
-            return self.admin_auth(request);
+            return self.admin_identity(request).await;
         }
         let cookie = session_cookie(request)?;
-        self.valid_session(&cookie).await?;
+        let scope = self.valid_session(&cookie).await?;
         if request.method != "GET" {
             let csrf = self.csrf_token(&cookie)?;
             let supplied = request
@@ -41,21 +54,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 return Err(Error::forbidden());
             }
         }
-        Ok(())
+        Ok(scope)
     }
     fn csrf_token(&self, cookie: &str) -> Result<String> {
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.config.admin_secret.as_bytes())
-            .map_err(|_| Error::storage())?;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.csrf_key).map_err(|_| Error::storage())?;
         mac.update(b"waypost-admin-csrf\0");
         mac.update(cookie.as_bytes());
         Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
     }
-    async fn valid_session(&self, cookie: &str) -> Result<()> {
-        let rows=self.db.query(Statement::new("SELECT 1 AS valid FROM admin_sessions WHERE session_digest=? AND admin_fingerprint=? AND expires_at>?",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(self.config.admin_secret.as_bytes()).to_vec().into(),self.clock.now_ms().into()])).await?;
-        if rows.is_empty() {
-            Err(Error::unauthenticated())
-        } else {
-            Ok(())
+    async fn valid_session(&self, cookie: &str) -> Result<Option<String>> {
+        let rows=self.db.query(Statement::new("SELECT s.space_id FROM admin_sessions s WHERE s.session_digest=? AND s.expires_at>? AND ((s.space_id IS NULL AND s.admin_fingerprint=?) OR EXISTS(SELECT 1 FROM space_admin_credentials c WHERE c.space_id=s.space_id AND c.credential_digest=s.admin_fingerprint AND c.revoked_at IS NULL))",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),self.clock.now_ms().into(),Sha256::digest(self.config.admin_secret.as_bytes()).to_vec().into()])).await?;
+        let row = rows.first().ok_or_else(Error::unauthenticated)?;
+        match row.get("space_id") {
+            Some(Sql::Null) => Ok(None),
+            Some(Sql::Text(space)) => {
+                check_id(space)?;
+                Ok(Some(space.clone()))
+            }
+            _ => Err(Error::internal("admin session scope decoding")),
         }
     }
     pub(crate) async fn admin_session(&self, request: &Request) -> Response {
@@ -89,23 +106,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let body = crate::json::parse(&request.body, self.limits.max_json_bytes)?;
             fields(&body, &["admin_secret"])?;
             let secret = required(&body, "admin_secret")?;
-            self.admin_auth(&Request::json("POST", "/admin/session", &secret, json!({})))?;
+            let scope = self
+                .admin_identity(&Request::json("POST", "/admin/session", &secret, json!({})))
+                .await?;
             let cookie = URL_SAFE_NO_PAD.encode(random_bytes::<32>()?);
             let now = self.clock.now_ms();
             let expires = now + 8 * 60 * 60 * 1000;
-            self.db.batch(vec![Statement::new("DELETE FROM admin_sessions WHERE expires_at<=?",vec![now.into()]),Statement::new("INSERT INTO admin_sessions(session_digest,admin_fingerprint,created_at,expires_at) VALUES(?,?,?,?)",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(self.config.admin_secret.as_bytes()).to_vec().into(),now.into(),expires.into()])]).await?;
+            self.db.batch(vec![Statement::new("DELETE FROM admin_sessions WHERE expires_at<=?",vec![now.into()]),Statement::new("INSERT INTO admin_sessions(session_digest,admin_fingerprint,created_at,expires_at,space_id) VALUES(?,?,?,?,?)",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(secret.as_bytes()).to_vec().into(),now.into(),expires.into(),scope.clone().into()])]).await?;
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"expires_at":stamp(expires)?}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"expires_at":stamp(expires)?,"space_id":scope,"operator":scope.is_none()}),
                 Some(format!(
                     "waypost_admin={cookie}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=28800{secure}"
                 )),
             ));
         }
         let cookie = session_cookie(request)?;
-        self.admin_access(request).await?;
+        let scope = self.admin_access(request).await?;
         if request.method == "GET" {
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"space_id":scope,"operator":scope.is_none()}),
                 None,
             ));
         }
@@ -213,7 +232,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 .await?;
             let r = rows.first().ok_or_else(Error::not_found)?;
             let mut value = crate::json::parse(
-                &self.objects.read(&text(r, "body_ref")?).await?,
+                &self.object_read(sid, &text(r, "body_ref")?).await?,
                 self.limits.max_json_bytes,
             )?;
             value["message_id"] = json!(id);
@@ -235,14 +254,24 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     .ok_or_else(|| Error::invalid("Invalid revision."))?,
             };
             if revision>0 && self.db.query(Statement::new("SELECT 1 AS exists_revision FROM memory_revisions WHERE space_id=? AND collection_id=? AND revision=?",vec![sid.into(),cid.clone().into(),revision.into()])).await?.is_empty(){return Err(Error::not_found())}
-            let rows=self.db.query(Statement::new("SELECT item_id,blob_id,path,metadata,deleted_in_revision FROM memory_revision_items WHERE space_id=? AND collection_id=? AND revision=? ORDER BY item_id LIMIT 101",vec![sid.into(),cid.into(),revision.into()])).await?;
+            let rows=self.db.query(Statement::new("SELECT item_id,blob_id,path,metadata,deleted_in_revision FROM memory_revision_items WHERE space_id=? AND collection_id=? AND revision=? ORDER BY item_id LIMIT 101",vec![sid.into(),cid.clone().into(),revision.into()])).await?;
             let mut items = vec![];
             for row in rows.iter().take(100) {
                 let mut value = row_value(row);
                 value["metadata"] = crate::json::parse(
-                    text(row, "metadata")?.as_bytes(),
+                    self.open_field(
+                        sid,
+                        &format!("memory/{cid}/{revision}/{}/metadata", text(row, "item_id")?),
+                        &text(row, "metadata")?,
+                    )?
+                    .as_bytes(),
                     self.limits.max_blob_bytes as usize,
                 )?;
+                value["path"] = json!(self.open_field(
+                    sid,
+                    &format!("memory/{cid}/{revision}/{}/path", text(row, "item_id")?),
+                    &text(row, "path")?
+                )?);
                 items.push(value);
             }
             return Ok(
@@ -260,7 +289,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 ))
                 .await?;
             let row = rows.first().ok_or_else(Error::not_found)?;
-            let bytes = self.objects.read(&text(row, "object_key")?).await?;
+            let bytes = self.read_blob_bytes(row).await?;
             return Ok(
                 json!({"blob_id":id,"content_type":text(row,"content_type")?,"size_bytes":integer(row,"size_bytes")?,"sha256":hex::encode(blob(row,"sha256")?),"text":std::str::from_utf8(&bytes).ok(),"inspection":"UTF-8 text rendering; other binary data is not rendered"}),
             );
@@ -278,8 +307,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "feed" => (
                 "feed_items",
                 "item_id",
-                "sequence",
-                "item_id,item_type,resource_id,resource_version,producer_id,thread_id,committed_at,CAST(sequence AS TEXT) AS visible_seq",
+                "space_sequence",
+                "item_id,item_type,resource_id,resource_version,producer_id,thread_id,committed_at,CAST(space_sequence AS TEXT) AS visible_seq",
                 "producer_id",
             ),
             "messages" => (
@@ -391,9 +420,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     o.remove("sort_at");
                     o.remove("sort_id");
                 }
-                v
+                if kind == "messages" {
+                    v["subject"] = json!(self.open_field(
+                        sid,
+                        &format!("message/{}/subject", text(r, "message_id")?),
+                        &text(r, "subject")?
+                    )?);
+                }
+                if kind == "blobs"
+                    && let Some(name) = crate::storage::driver::optional_text(r, "filename")
+                {
+                    v["filename"] = json!(self.open_field(
+                        sid,
+                        &format!("blob/{}/filename", text(r, "blob_id")?),
+                        &name
+                    )?);
+                }
+                Ok(v)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
         Ok(json!({"items":items,"has_more":more,"next_cursor":cursor}))
     }
 }

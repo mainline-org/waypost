@@ -63,3 +63,43 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:8788/health
           test "$(docker exec waypost-ci id -u)" = 10001
+  worker-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: examples/mcp-client/package-lock.json
+      - run: cargo install worker-build --version 0.8.7 --locked
+      - run: npm ci --prefix examples/mcp-client --ignore-scripts
+      - name: Exercise actual Workerd, D1, R2 and deployment guards
+        env:
+          WAYPOST_ADMIN_SECRET: ci-only-admin-secret-32-bytes-long
+          WAYPOST_ENCRYPTION_KEYS: '{"active":"ci","keys":{"ci":"1111111111111111111111111111111111111111111111111111111111111111"}}'
+          WAYPOST_URL: http://127.0.0.1:8791
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          printf 'WAYPOST_ADMIN_SECRET="%s"\n' "$WAYPOST_ADMIN_SECRET" > .dev.vars
+          printf "WAYPOST_ENCRYPTION_KEYS='%s'\n" "$WAYPOST_ENCRYPTION_KEYS" >> .dev.vars
+          npx --yes wrangler@4.111.0 d1 migrations apply waypost --local
+          npx --yes wrangler@4.111.0 dev --local --port 8791 > /tmp/waypost-worker.log 2>&1 &
+          service_pid=$!
+          trap 'kill "$service_pid"' EXIT
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent "$WAYPOST_URL/health" >/dev/null; then break; fi
+            sleep 1
+          done
+          node examples/mcp-client/demo.mjs
+          python3 examples/demo.py --url "$WAYPOST_URL" --output /tmp/waypost-worker-demo
+          python3 scripts/verify_deployment.py --url "$WAYPOST_URL" --check-rate-limit --check-api-rate-limit
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: worker-runtime-log
+          path: /tmp/waypost-worker.log

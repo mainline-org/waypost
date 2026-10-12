@@ -1,5 +1,8 @@
 use crate::error::Result;
 pub(crate) mod driver;
+pub(crate) mod migrations;
+pub(crate) mod queries;
+pub(crate) mod rows;
 
 #[derive(Debug, Clone)]
 pub struct ObjectInfo {

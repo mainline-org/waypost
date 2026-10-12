@@ -283,7 +283,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let now = self.clock.now_ms();
         for (position, id) in input.attachment_ids.iter_mut().enumerate() {
             let original = self.reference_blob(p, id).await?;
-            let original_bytes = self.objects.read(&text(&original, "object_key")?).await?;
+            let original_bytes = self.read_blob_bytes(&original).await?;
             let content_type = text(&original, "content_type")?;
             let is_text = content_type.starts_with("text/")
                 || content_type.split(';').next() == Some("application/json")
@@ -316,6 +316,14 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 original_bytes
             };
             let filename = optional_text(&original, "filename")
+                .map(|v| {
+                    self.open_field(
+                        &p.space_id,
+                        &format!("blob/{}/filename", text(&original, "blob_id")?),
+                        &v,
+                    )
+                })
+                .transpose()?
                 .map(|v| policy.mask(&v, "attachment.filename", &mut hits, &mut 256))
                 .transpose()?;
             if bytes.len() as u64 > self.limits.max_blob_bytes {
@@ -325,10 +333,16 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 ));
             }
             let derived = format!("filtered_{sid}_p{}_a{position}", policy.revision);
+            self.journal_object(
+                p,
+                &sid,
+                &self.storage_key(&p.space_id, &format!("object_{derived}")),
+            )
+            .await?;
             let object = self
-                .objects
-                .create_only(
-                    &format!("object_{derived}"),
+                .object_create(
+                    &p.space_id,
+                    &self.storage_key(&p.space_id, &format!("object_{derived}")),
                     &bytes,
                     &content_type,
                     &Sha256::digest(&bytes),
@@ -338,11 +352,17 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 p.space_id.clone().into(),
                 derived.clone().into(),
                 p.actor_id.clone().into(),
-                format!("object_{derived}").into(),
+                self.storage_key(&p.space_id, &format!("object_{derived}"))
+                    .into(),
                 content_type.into(),
                 (object.size as i64).into(),
                 object.sha256.into(),
-                filename.into(),
+                filename
+                    .map(|name| {
+                        self.seal_field(&p.space_id, &format!("blob/{derived}/filename"), &name)
+                    })
+                    .transpose()?
+                    .into(),
                 now.into(),
             ]);
             *id = derived;
@@ -462,7 +482,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             vec![sid.into(), next.into(), nonce.clone().into()],
         );
         let mut q = vec![Statement::new(
-            "INSERT OR IGNORE INTO privacy_updates(space_id,revision,nonce) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM spaces WHERE space_id=? AND privacy_revision=?)",
+            "INSERT INTO privacy_updates(space_id,revision,nonce) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM spaces WHERE space_id=? AND privacy_revision=?) ON CONFLICT(space_id,revision) DO NOTHING",
             vec![
                 sid.into(),
                 next.into(),
