@@ -81,6 +81,7 @@ impl SqliteDb {
                 include_str!("../../migrations/0001_identity_mailbox.sql"),
             ),
             (2, include_str!("../../migrations/0002_receipts.sql")),
+            (3, include_str!("../../migrations/0003_blobs_memory.sql")),
         ] {
             let installed: bool = connection
                 .query_row(
@@ -212,10 +213,10 @@ impl ObjectStore for FileStore {
             std::fs::File::open(&self.root)?.sync_all()
         })();
         let _ = std::fs::remove_file(&temp);
-        if let Err(e) = written {
-            if e.kind() != std::io::ErrorKind::AlreadyExists {
-                return Err(Error::storage());
-            }
+        if let Err(e) = written
+            && e.kind() != std::io::ErrorKind::AlreadyExists
+        {
+            return Err(Error::storage());
         }
         let actual = self.inspect(key).await?.ok_or_else(Error::storage)?;
         if actual.sha256 != info.sha256 || actual.size != info.size {

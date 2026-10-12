@@ -181,7 +181,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let observe = p.view == "space_log" && p.has("space.observe");
         (
             format!(
-                "(({}.item_type='message' AND ?=1 AND (?=1 OR EXISTS(SELECT 1 FROM feed_recipients vr WHERE vr.space_id={alias}.space_id AND vr.item_id={alias}.item_id AND vr.actor_id=?))) OR ({}.item_type='receipt' AND (?=1 OR EXISTS(SELECT 1 FROM feed_recipients vr WHERE vr.space_id={alias}.space_id AND vr.item_id={alias}.item_id AND vr.actor_id=?))))",
+                "(({}.item_type='message' AND ?=1 AND (?=1 OR EXISTS(SELECT 1 FROM feed_recipients vr WHERE vr.space_id={alias}.space_id AND vr.item_id={alias}.item_id AND vr.actor_id=?))) OR ({}.item_type='receipt' AND (?=1 OR EXISTS(SELECT 1 FROM feed_recipients vr WHERE vr.space_id={alias}.space_id AND vr.item_id={alias}.item_id AND vr.actor_id=?))) OR ({alias}.item_type='memory_revision' AND ?=1 AND EXISTS(SELECT 1 FROM memory_collections mc WHERE mc.space_id={alias}.space_id AND mc.collection_id={alias}.resource_id AND (?=1 OR mc.source_actor_id=? OR EXISTS(SELECT 1 FROM token_collections tc WHERE tc.token_id=? AND tc.space_id=mc.space_id AND tc.collection_id=mc.collection_id AND tc.action='read')))))",
                 alias, alias
             ),
             vec![
@@ -190,6 +190,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 p.actor_id.clone().into(),
                 observe.into(),
                 p.actor_id.clone().into(),
+                (observe || p.has("memory.read")).into(),
+                observe.into(),
+                p.actor_id.clone().into(),
+                p.token_id.clone().into(),
             ],
         )
     }
@@ -206,7 +210,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let (authority, auth) = self.authority_guard(p);
         let (visible, visibility) = self.feed_visibility(p, "f");
         let mut sql = format!(
-            "SELECT f.*,CAST(f.sequence AS TEXT) AS visible_seq,m.subject,m.kind,u.subject_item_id,u.subject_resource_id,u.consumer_id AS receipt_consumer_id,u.actor_id AS receipt_actor_id,u.stage AS receipt_stage,u.receipt_version,u.updated_at AS receipt_updated_at FROM feed_items f LEFT JOIN messages m ON f.item_type='message' AND m.space_id=f.space_id AND m.message_id=f.resource_id LEFT JOIN feed_receipt_updates u ON f.item_type='receipt' AND u.space_id=f.space_id AND u.item_id=f.item_id WHERE f.space_id=? AND f.sequence>CAST(? AS INTEGER) AND {authority} AND {visible}"
+            "SELECT f.*,CAST(f.sequence AS TEXT) AS visible_seq,m.subject,m.kind,mr.parent_revision,mr.manifest_blob_id,u.subject_item_id,u.subject_resource_id,u.consumer_id AS receipt_consumer_id,u.actor_id AS receipt_actor_id,u.stage AS receipt_stage,u.receipt_version,u.updated_at AS receipt_updated_at FROM feed_items f LEFT JOIN messages m ON f.item_type='message' AND m.space_id=f.space_id AND m.message_id=f.resource_id LEFT JOIN memory_revisions mr ON f.item_type='memory_revision' AND mr.space_id=f.space_id AND mr.collection_id=f.resource_id AND mr.revision=f.resource_version LEFT JOIN feed_receipt_updates u ON f.item_type='receipt' AND u.space_id=f.space_id AND u.item_id=f.item_id WHERE f.space_id=? AND f.sequence>CAST(? AS INTEGER) AND {authority} AND {visible}"
         );
         let mut args = vec![p.space_id.clone().into(), position.to_string().into()];
         args.extend(auth);
@@ -266,6 +270,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let kind = text(&row, "item_type")?;
             let data = if kind == "message" {
                 json!({"message_id":text(&row,"resource_id")?,"subject":text(&row,"subject")?,"kind":text(&row,"kind")?})
+            } else if kind == "memory_revision" {
+                json!({"collection_id":text(&row,"resource_id")?,"revision":integer(&row,"resource_version")?,"parent_revision":integer(&row,"parent_revision")?,"manifest_blob_id":text(&row,"manifest_blob_id")?})
             } else {
                 json!({"receipt_id":text(&row,"resource_id")?,"subject_item_id":text(&row,"subject_item_id")?,"subject_resource_id":text(&row,"subject_resource_id")?,"consumer_id":text(&row,"receipt_consumer_id")?,"actor_id":text(&row,"receipt_actor_id")?,"stage":if integer(&row,"receipt_stage")?==2{"processed"}else{"received"},"updated_at":stamp(integer(&row,"receipt_updated_at")?)?})
             };

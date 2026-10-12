@@ -35,11 +35,16 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "message.send" => Ok(
                 json!({"submission_state":"committed","resource_id":resource,"message_id":resource,"thread_id":text(row,"thread_id")?,"committed_at":stamp(integer(row,"committed_at")?)?}),
             ),
+            "memory.publish" => Ok(
+                json!({"submission_state":"committed","collection_id":resource,"revision":integer(row,"result_revision")?,"changed":integer(row,"result_changed")?==1,"manifest_blob_id":optional_text(row,"result_manifest_blob_id")}),
+            ),
             _ => Ok(
                 json!({"submission_state":"committed","resource_id":resource,"committed_at":stamp(integer(row,"committed_at")?)?}),
             ),
         }
     }
+    // Reservation lists its durable identity fields explicitly; no hidden builder state.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn reserve(
         &self,
         p: &Principal,
@@ -163,17 +168,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         if let Some(row) = self
             .submission(p, "message.send", &input.request_id)
             .await?
+            && let Some(result) = self.existing_result(&row, &fp)?
         {
-            if let Some(result) = self.existing_result(&row, &fp)? {
-                self.current(p).await?;
-                return Ok(result);
-            }
+            self.current(p).await?;
+            return Ok(result);
         }
-        if !input.attachment_ids.is_empty() {
-            return Err(Error::new(
-                "BLOB_NOT_SEALED",
-                "Attachments are not available yet.",
-            ));
+        for id in &input.attachment_ids {
+            self.reference_blob(p, id).await?;
         }
         let placeholders = vec!["?"; recipients.len()].join(",");
         let mut args = vec![p.space_id.clone().into()];
@@ -288,6 +289,24 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         p.space_id.clone().into(),
                         message_id.clone().into(),
                         id.into(),
+                    ]
+                })
+                .collect(),
+            Some(guard.clone()),
+        ));
+        q.extend(push_rows(
+            "message_attachments",
+            "space_id,message_id,position,blob_id",
+            input
+                .attachment_ids
+                .iter()
+                .enumerate()
+                .map(|(i, id)| {
+                    vec![
+                        p.space_id.clone().into(),
+                        message_id.clone().into(),
+                        (i as i64).into(),
+                        id.clone().into(),
                     ]
                 })
                 .collect(),
@@ -423,7 +442,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         self.current(p).await?;
         let state = text(&row, "state")?;
         Ok(
-            json!({"submission_state":state,"submission_id":text(&row,"submission_id")?,"resource_id":text(&row,"resource_id")?,"result":if state=="committed"{Some(if operation=="receipt.ack"{self.ack_result(&row).await?}else{self.committed_result(&row)?})}else{None},"error":if state=="failed"{Some(recorded_error(&row)?.value())}else{None}}),
+            json!({"submission_state":state,"submission_id":text(&row,"submission_id")?,"resource_id":text(&row,"resource_id")?,"result":if state=="committed"{Some(if operation=="receipt.ack"{self.ack_result(&row).await?}else if operation=="blob.prepare"{self.upload_result(&row).await?}else if operation=="blob.commit"{self.sealed_result(p,&text(&row,"resource_id")?).await?}else{self.committed_result(&row)?})}else{None},"error":if state=="failed"{Some(recorded_error(&row)?.value())}else{None}}),
         )
     }
 }

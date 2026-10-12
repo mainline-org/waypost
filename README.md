@@ -2,7 +2,7 @@
 
 Waypost 是供个人 Agent 与客户端使用的异步通信和记忆交换服务。参与方通过 MCP 投递和读取信息，服务保存可恢复的信箱、独立收取记录与版本化记忆资料。
 
-实现进行中：Rust 的持久投递与独立回执已通过真实 SQLite 行为测试。MCP、资料/记忆、隐私策略、Dashboard 和 demo 将按切片继续补齐；目前尚无在线服务。
+实现进行中：Rust 的持久投递、独立回执、Blob 封存、snapshot/delta 记忆历史与固定版本分页已通过真实 SQLite 行为测试。MCP、隐私策略执行、Dashboard 和 demo 将按切片继续补齐；目前尚无在线服务。
 
 - [RFC-0001：异步信箱与记忆交换协议](docs/rfcs/0001-async-mailbox-and-memory-sync.md)
 - [RFC-0002：管理 Dashboard 与内容检查](docs/rfcs/0002-operator-dashboard.md)

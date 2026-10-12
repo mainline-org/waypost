@@ -91,6 +91,58 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let sid = parts[3];
             check_id(sid)?;
             self.admin_space(sid).await?;
+            if request.method == "POST" && parts.len() == 5 && parts[4] == "collections" {
+                fields(
+                    &body,
+                    &["request_id", "source_actor_id", "scope", "display_name"],
+                )?;
+                let source = required(&body, "source_actor_id")?;
+                self.admin_actor(sid, &source).await?;
+                let scope = required(&body, "scope")?;
+                if scope.trim().is_empty() || scope.len() > 256 {
+                    return Err(Error::invalid("Invalid scope."));
+                }
+                let name = display_name(&body)?;
+                let op = format!("admin.collection.create:{sid}");
+                let (key, fp) = admin_key(&body)?;
+                if let Some(row) = self.admin_existing(&op, &key, &fp).await? {
+                    return self
+                        .admin_collection(sid, &text(&row, "resource_id")?)
+                        .await;
+                }
+                let cid = random_id("collection")?;
+                let now = self.clock.now_ms();
+                let mut q = vec![admin_reservation(
+                    &op,
+                    &key,
+                    &fp,
+                    Some(sid.into()),
+                    &cid,
+                    None,
+                    now,
+                )?];
+                q.extend(push_rows(
+                    "memory_collections",
+                    "space_id,collection_id,source_actor_id,scope,display_name,created_at",
+                    vec![vec![
+                        sid.into(),
+                        cid.clone().into(),
+                        source.into(),
+                        scope.into(),
+                        name.into(),
+                        now.into(),
+                    ]],
+                    Some(admin_guard(&op, &key, &cid)),
+                ));
+                self.db.batch(q).await?;
+                let row = self
+                    .admin_existing(&op, &key, &fp)
+                    .await?
+                    .ok_or_else(Error::storage)?;
+                return self
+                    .admin_collection(sid, &text(&row, "resource_id")?)
+                    .await;
+            }
             if request.method == "POST" && parts.len() == 5 && parts[4] == "actors" {
                 fields(&body, &["request_id", "display_name", "kind"])?;
                 let name = display_name(&body)?;
@@ -179,7 +231,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     "consumer_filters",
                     "space_id,consumer_id,dimension,value",
                     rows,
-                    Some(guard),
+                    Some(guard.clone()),
                 ));
                 self.db.batch(q).await?;
                 let row = self
@@ -253,13 +305,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 for recipient in &grants.recipient_ids {
                     self.admin_actor(sid, recipient).await?;
                 }
-                if !grants.memory_read_collection_ids.is_empty()
-                    || !grants.memory_write_collection_ids.is_empty()
-                    || !grants.blob_reference_ids.is_empty()
+                for id in grants
+                    .memory_read_collection_ids
+                    .iter()
+                    .chain(grants.memory_write_collection_ids.iter())
                 {
-                    return Err(Error::invalid(
-                        "Memory and Blob grants are not available yet.",
-                    ));
+                    self.admin_collection(sid, id).await?;
+                }
+                for id in &grants.blob_reference_ids {
+                    if self
+                        .db
+                        .query(Statement::new(
+                            "SELECT 1 AS valid FROM blobs WHERE space_id=? AND blob_id=?",
+                            vec![sid.into(), id.clone().into()],
+                        ))
+                        .await?
+                        .is_empty()
+                    {
+                        return Err(Error::not_found());
+                    }
                 }
                 let now = self.clock.now_ms();
                 let expires = match body.get("expires_at") {
@@ -322,6 +386,29 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     "token_id,space_id,actor_id",
                     grants
                         .recipient_ids
+                        .into_iter()
+                        .map(|id| vec![tid.clone().into(), sid.into(), id.into()])
+                        .collect(),
+                    Some(guard.clone()),
+                ));
+                q.extend(push_rows(
+                    "token_collections",
+                    "token_id,space_id,collection_id,action",
+                    grants
+                        .memory_read_collection_ids
+                        .into_iter()
+                        .map(|id| vec![tid.clone().into(), sid.into(), id.into(), "read".into()])
+                        .chain(grants.memory_write_collection_ids.into_iter().map(|id| {
+                            vec![tid.clone().into(), sid.into(), id.into(), "write".into()]
+                        }))
+                        .collect(),
+                    Some(guard.clone()),
+                ));
+                q.extend(push_rows(
+                    "token_blob_grants",
+                    "token_id,space_id,blob_id",
+                    grants
+                        .blob_reference_ids
                         .into_iter()
                         .map(|id| vec![tid.clone().into(), sid.into(), id.into()])
                         .collect(),

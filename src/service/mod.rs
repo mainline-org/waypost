@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, rc::Rc};
 mod admin;
+mod blobs;
 mod mailbox;
+mod memory;
 mod receipts;
 
 #[derive(Clone)]
@@ -101,6 +103,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     .map(str::to_owned)
             })
             .unwrap_or(trace);
+        if request.method == "GET"
+            && request.path.starts_with("/v0/blobs/")
+            && request.path.ends_with("/content")
+        {
+            match self.blob_content(&request).await {
+                Ok(response) => return response,
+                Err(error) => {
+                    return Response::json(
+                        error.status(),
+                        json!({"ok":false,"request_id":request_id,"error":error.value()}),
+                    );
+                }
+            }
+        }
         let result = self.route(&request).await;
         match result {
             Ok(data) => Response::json(200, json!({"ok":true,"request_id":request_id,"data":data})),
@@ -114,10 +130,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         if request.path == "/health" && request.method == "GET" {
             return Ok(json!({"status":"ok","api_version":"0.1"}));
         }
-        if let Some(origin) = request.headers.get("origin") {
-            if origin != &self.config.public_origin {
-                return Err(Error::forbidden());
-            }
+        if let Some(origin) = request.headers.get("origin")
+            && origin != &self.config.public_origin
+        {
+            return Err(Error::forbidden());
         }
         if request.path.starts_with("/admin/v0/") {
             self.admin_auth(request)?;
@@ -125,9 +141,43 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             return self.admin(request, value).await;
         }
         let principal = self.authenticate(request).await?;
+        let parts = request
+            .path
+            .trim_matches('/')
+            .split('/')
+            .collect::<Vec<_>>();
+        if request.method == "PUT"
+            && parts.len() == 4
+            && parts[0..2] == ["v0", "uploads"]
+            && parts[3] == "content"
+        {
+            return self.blob_put(&principal, parts[2], request).await;
+        }
         let value = crate::json::parse(&request.body, self.limits.max_json_bytes)?;
+        if request.method == "POST"
+            && parts.len() == 4
+            && parts[0..2] == ["v0", "uploads"]
+            && parts[3] == "commit"
+        {
+            return self.blob_commit(&principal, parts[2], value).await;
+        }
+        if request.method == "POST"
+            && parts.len() == 5
+            && parts[0..3] == ["v0", "memory", "collections"]
+        {
+            match parts[4] {
+                "revisions" => return self.memory_publish(&principal, parts[3], value).await,
+                "read" => return self.memory_read(&principal, parts[3], value).await,
+                _ => return Err(Error::not_found()),
+            }
+        }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/v0/describe") => self.describe(&principal).await,
+            ("POST", "/v0/uploads") => self.blob_prepare(&principal, value).await,
+            ("GET", path) if path.starts_with("/v0/blobs/") => {
+                self.blob_get(&principal, path.trim_start_matches("/v0/blobs/"))
+                    .await
+            }
             ("POST", "/v0/messages") => self.send(&principal, value).await,
             ("POST", "/v0/receipts") => self.ack(&principal, value).await,
             ("POST", "/v0/inbox/read") => self.inbox(&principal, value).await,
@@ -265,7 +315,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     pub(crate) async fn describe(&self, p: &Principal) -> Result<Value> {
         self.current(p).await?;
         Ok(
-            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_actor_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"limits":self.limits,"capabilities":{"mailbox":true,"receipts":true,"blob_upload":false,"memory_snapshot":false,"memory_delta":false,"webhook_events":false,"oauth":false,"server_export":false}}),
+            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_actor_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"limits":self.limits,"capabilities":{"mailbox":true,"receipts":true,"blob_upload":true,"memory_snapshot":true,"memory_delta":true,"webhook_events":false,"oauth":false,"server_export":false}}),
         )
     }
     pub(crate) fn sign_cursor(&self, payload: &str) -> Result<String> {
