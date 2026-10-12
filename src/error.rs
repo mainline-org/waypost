@@ -43,7 +43,7 @@ impl Error {
             | "SUBMISSION_PENDING" => 409,
             "CURSOR_EXPIRED" | "UPLOAD_EXPIRED" => 410,
             "RESOURCE_LIMIT" => 413,
-            "CHECKSUM_MISMATCH" | "INVALID_BLOB" => 422,
+            "CHECKSUM_MISMATCH" | "INVALID_BLOB" | "PRIVACY_BLOCKED" => 422,
             "RATE_LIMITED" => 429,
             "STORAGE_UNAVAILABLE" => 503,
             _ => 400,

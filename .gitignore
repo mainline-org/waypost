@@ -9,3 +9,6 @@
 /.env
 /.env.*
 !/.env.example
+
+/node_modules/
+/examples/mcp-client/node_modules/

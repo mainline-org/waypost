@@ -2,7 +2,7 @@
 
 Waypost 是供个人 Agent 与客户端使用的异步通信和记忆交换服务。参与方通过 MCP 投递和读取信息，服务保存可恢复的信箱、独立收取记录与版本化记忆资料。
 
-实现进行中：Rust 的持久投递、独立回执、Blob 封存、snapshot/delta 记忆历史与固定版本分页已通过真实 SQLite 行为测试。MCP、隐私策略执行、Dashboard 和 demo 将按切片继续补齐；目前尚无在线服务。
+实现进行中：Rust 的持久投递、独立回执、Blob 封存、snapshot/delta 记忆历史与固定版本分页已通过真实 SQLite 行为测试。MCP、原生 HTTP 服务、Agent 管理 Dashboard 和本地隐私过滤已实现；完整导出/消费 demo、通用 Skill 和 Cloudflare 适配继续补齐。当前可本机试用，尚无在线托管服务。
 
 - [RFC-0001：异步信箱与记忆交换协议](docs/rfcs/0001-async-mailbox-and-memory-sync.md)
 - [RFC-0002：管理 Dashboard 与内容检查](docs/rfcs/0002-operator-dashboard.md)
@@ -18,3 +18,25 @@ Waypost 是供个人 Agent 与客户端使用的异步通信和记忆交换服�
 后续实现以 RFC 的规范性要求、操作契约和性质为准。公开协议与通用 Skill 属于本项目；任何兼容客户端都可以接入。应用侧的模型、任务执行、内容理解和记忆整理由接入方负责。
 
 仓库：[mainline-org/waypost](https://github.com/mainline-org/waypost)。许可证：[Apache-2.0](LICENSE)。
+
+## 本机试用
+
+需要 Rust 1.91 或更新版本。
+
+```bash
+cargo run -- init --data ./var
+cargo run -- serve --data ./var
+```
+
+打开 `http://127.0.0.1:8787/dashboard`，用 `var/admin-secret` 中的管理凭据登录。新建空间并接入 Agent，保存界面只展示一次的连接凭据；MCP 地址为 `http://127.0.0.1:8787/mcp`。默认只监听本机。自定义外部入口时设置 `WAYPOST_PUBLIC_ORIGIN`；`WAYPOST_ADMIN_SECRET` 可覆盖本地管理凭据。
+
+真实 MCP SDK 试用：
+
+```bash
+npm ci --prefix examples/mcp-client
+WAYPOST_ADMIN_SECRET="$(cat var/admin-secret)" node examples/mcp-client/demo.mjs
+```
+
+这个例子创建独立试用空间，以官方 MCP SDK 完成初始化、工具发现、幂等投递和内容读取。不会打印 Agent 的原始凭据。
+
+Dashboard 检查不会替任何 Consumer 确认消息。隐私规则检查 UTF-8 文本并可派生脱敏附件；图片、PDF 等内容无法检查，默认阻止分享。来源记忆按原授权保存，历史消息不会被策略更新改写。规则覆盖范围可查看 `docs/rfcs/0003-agent-privacy-policies.md`。

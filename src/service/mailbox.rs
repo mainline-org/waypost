@@ -123,7 +123,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             id.clone().into(),
         ];
         parameters.extend(args);
-        self.db.batch(vec![Statement::new(format!("UPDATE submissions SET state='prepared',body_ref=?,body_sha256=?,body_size=?,prepared_at=? WHERE submission_id=? AND state='reserved' AND {authority}"),parameters)]).await?;
+        self.db.batch(vec![Statement::new(format!("UPDATE submissions SET state='prepared',body_ref=?,body_sha256=?,body_size=?,prepared_at=? WHERE submission_id=? AND state IN('reserved','prepared') AND {authority}"),parameters)]).await?;
         let rows = self
             .db
             .query(Statement::new(
@@ -221,8 +221,21 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         let message_id = text(&row, "resource_id")?;
         let tid = text(&row, "thread_id")?;
-        let body_key = format!("body_{message_id}");
-        let bytes = crate::json::canonical(&normalized)?;
+        let filtered = self.filter_message(p, &row, input).await?;
+        let input = filtered.input;
+        let body_key = format!("body_{message_id}_p{}", filtered.revision);
+        let mut published = serde_json::to_value(&input).map_err(|_| Error::storage())?;
+        published
+            .as_object_mut()
+            .ok_or_else(Error::storage)?
+            .remove("request_id");
+        let bytes = crate::json::canonical(&published)?;
+        if bytes.len() > self.limits.max_json_bytes {
+            return Err(Error::new(
+                "RESOURCE_LIMIT",
+                "Filtered message exceeds deployment limit.",
+            ));
+        }
         let row = self
             .prepared(p, &row, &body_key, &bytes, "application/json")
             .await?;
@@ -240,6 +253,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "UPDATE submissions SET attempt_nonce=? WHERE submission_id=? AND state='prepared' AND {authority} AND NOT EXISTS(SELECT 1 FROM submission_recipients sr JOIN actors a ON a.space_id=sr.space_id AND a.actor_id=sr.actor_id WHERE sr.submission_id=? AND a.disabled=1)"
         );
         guard_args.push(sid.clone().into());
+        guard_sql.push_str(" AND body_ref=? AND EXISTS(SELECT 1 FROM spaces WHERE space_id=? AND privacy_revision=?)");
+        guard_args.extend(vec![
+            body_key.clone().into(),
+            p.space_id.clone().into(),
+            filtered.revision.into(),
+        ]);
         if !new_thread {
             guard_sql.push_str(" AND EXISTS(SELECT 1 FROM thread_members WHERE space_id=? AND thread_id=? AND actor_id=?) AND NOT EXISTS(SELECT 1 FROM submission_recipients sr WHERE sr.submission_id=? AND NOT EXISTS(SELECT 1 FROM thread_members tm WHERE tm.space_id=sr.space_id AND tm.thread_id=? AND tm.actor_id=sr.actor_id))");
             guard_args.extend(vec![
@@ -277,6 +296,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 Some(guard.clone()),
             ));
         }
+        q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,filename,sealed_at",filtered.blobs,Some(guard.clone())));
+        q.extend(push_rows(
+            "privacy_audit",
+            "space_id,submission_id,privacy_revision,action,rule_id,field,count,created_at",
+            filtered.hits,
+            Some(guard.clone()),
+        ));
         q.extend(push_rows("messages","space_id,message_id,submission_id,producer_id,thread_id,in_reply_to,kind,subject,body_ref,committed_at",vec![vec![p.space_id.clone().into(),message_id.clone().into(),sid.clone().into(),p.actor_id.clone().into(),tid.clone().into(),input.in_reply_to.into(),input.kind.as_str().into(),input.subject.into(),body_key.into(),now.into()]],Some(guard.clone())));
         q.extend(push_rows(
             "message_recipients",

@@ -143,6 +143,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     .admin_collection(sid, &text(&row, "resource_id")?)
                     .await;
             }
+            if request.method == "POST" && parts.len() == 5 && parts[4] == "inspect" {
+                return self.admin_inspect(sid, body).await;
+            }
+            if parts.len() >= 5 && parts[4] == "privacy" {
+                return self.admin_privacy(sid, request, &parts, body).await;
+            }
             if request.method == "POST" && parts.len() == 5 && parts[4] == "actors" {
                 fields(&body, &["request_id", "display_name", "kind"])?;
                 let name = display_name(&body)?;

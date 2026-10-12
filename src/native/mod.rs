@@ -1,3 +1,4 @@
+pub mod server;
 use crate::{
     error::{Error, Result},
     storage::{Database, ObjectInfo, ObjectStore, Row, Statement, Value},
@@ -82,6 +83,8 @@ impl SqliteDb {
             ),
             (2, include_str!("../../migrations/0002_receipts.sql")),
             (3, include_str!("../../migrations/0003_blobs_memory.sql")),
+            (4, include_str!("../../migrations/0004_privacy.sql")),
+            (5, include_str!("../../migrations/0005_admin_sessions.sql")),
         ] {
             let installed: bool = connection
                 .query_row(
