@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'examples'))
 from consumer import NoRedirect
 
 
-def verify(origin, admin_secret, check_rate_limit=False):
+def verify(origin, admin_secret, check_rate_limit=False, check_api_rate_limit=False):
     parsed = urllib.parse.urlsplit(origin)
     if parsed.scheme != 'https' and not (parsed.scheme == 'http' and parsed.hostname in ('localhost', '127.0.0.1')):
         raise ValueError('Use HTTPS for a public service.')
@@ -52,6 +52,8 @@ def verify(origin, admin_secret, check_rate_limit=False):
     assert status == 401, 'Readiness must require operator authentication.'
     status, _, body = request('GET', '/ready', headers={'authorization': 'Bearer ' + admin_secret})
     assert status == 200 and body['data']['status'] == 'ready' and body['data']['schema_revision'] == 6, 'D1/R2 readiness check failed.'
+    expected_environment = 'production' if parsed.scheme == 'https' else 'development'
+    assert body['data']['environment'] == expected_environment, 'Deployment environment is not the expected profile.'
     checks.append('authenticated_d1_r2_readiness')
     status, _, _ = request('POST', '/admin/session', {'admin_secret': admin_secret}, {'origin': 'https://invalid-origin.example'})
     assert status == 403, 'Foreign browser origin was accepted.'
@@ -87,6 +89,16 @@ def verify(origin, admin_secret, check_rate_limit=False):
             assert status == 401, 'Unexpected login failure status.'
         else:
             raise AssertionError('Login rate limit was not enforced.')
+    if check_api_rate_limit:
+        for _ in range(320):
+            status, _, body = request('GET', '/admin/session', headers={'cookie': 'waypost_admin=invalid_session_read_probe'})
+            if status == 429:
+                assert body['error']['code'] == 'RATE_LIMITED', 'Unexpected API rate-limit response.'
+                checks.append('session_read_api_rate_limit')
+                break
+            assert status == 401, 'Unexpected session probe response.'
+        else:
+            raise AssertionError('Session reads bypassed API rate limiting.')
     return {'result': 'passed', 'origin': origin, 'checks': checks}
 
 
@@ -95,12 +107,13 @@ def main():
     parser.add_argument('--url', required=True)
     parser.add_argument('--admin-secret-file', type=Path)
     parser.add_argument('--check-rate-limit', action='store_true', help='Uses this IP login budget; run after other checks.')
+    parser.add_argument('--check-api-rate-limit', action='store_true', help='Exercises the local IP API budget; run last.')
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     secret = args.admin_secret_file.read_text().strip() if args.admin_secret_file else os.environ.get('WAYPOST_ADMIN_SECRET')
     if not secret:
         parser.error('Set WAYPOST_ADMIN_SECRET or --admin-secret-file; never pass credentials in the URL.')
-    result = verify(args.url, secret, args.check_rate_limit)
+    result = verify(args.url, secret, args.check_rate_limit, args.check_api_rate_limit)
     output = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

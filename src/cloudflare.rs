@@ -393,14 +393,20 @@ async fn handle_fetch(mut raw: worker::Request, env: Env) -> worker::Result<work
     let path = raw.path();
     let limiter = if path == "/admin/session" && raw.method() == worker::Method::Post {
         admin_limiter.ok()
-    } else if path == "/mcp"
-        || path == "/ready"
-        || path.starts_with("/v0/")
-        || path.starts_with("/admin/v0/")
+    } else if raw.method() == worker::Method::Get
+        && matches!(
+            path.as_str(),
+            "/" | "/dashboard"
+                | "/dashboard/"
+                | "/dashboard/app.js"
+                | "/dashboard/style.css"
+                | "/health"
+        )
     {
-        api_limiter.ok()
-    } else {
         None
+    } else {
+        // Session checks and unknown dynamic routes can also perform D1 queries.
+        api_limiter.ok()
     };
     if let Some(limiter) = limiter {
         let ip = raw
