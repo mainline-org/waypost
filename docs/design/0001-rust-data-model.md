@@ -504,7 +504,7 @@ pub trait MetadataStore {
 }
 ```
 
-实际文件可以按身份、发布、读取分区，首版不建立通用 Repository<T>、SQL字符串透传接口或动态插件注册。上述 async trait用于编译期注入，不要求 dyn对象、Send Future或 async_trait宏；Worker的运行限制保留在适配器内。
+上述 MetadataStore 为设计阶段的原子操作草图。实现阶段按 [ADR-0001](../adr/0001-internal-sql-driver.md) 修订执行边界：共享核心持有具名领域操作和发布规则，SQLite/D1 只实现 crate-private SQL 驱动。原始 SQL 不作为客户端或 Rust 公共存储 API；不建立通用 Repository<T> 或动态插件注册。Future 保持本地，不要求 Send 或 async_trait；Worker 的流式字节处理保留在适配器内。
 
 ### 6.1 参数与结果
 
@@ -586,7 +586,7 @@ D1的每次 Worker调用查询预算、每条语句参数数和长度限制同�
 
 一页内容、待处理项和本机检查点先在一笔 SQLite事务中保存，再发 received ACK。ACK响应丢失时仍保留本机记录。processed只在参考客户端明确确认处理后发送。出站参数采用固定列和子表，metadata仍可使用受限 JSON。
 
-具体参考客户端接口与 P17故障点在 Step 3确认；该客户端不保证其他未遵循保存流程的助手也具有本机可靠性。
+具体参考客户端接口与 P17故障点在 Step 3确认；实现的固定列与子表见 [SQLite 参考 Consumer](../demo.md#sqlite-参考-consumer)。原始入站传输与提交响应可保留为不可变归档，不作为重放参数或处理进度的唯一依据。该客户端不保证其他未遵循保存流程的助手也具有本机可靠性。
 
 ## 10. Dashboard 管理读取扩展
 

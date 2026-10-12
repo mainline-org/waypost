@@ -1,0 +1,65 @@
+name: checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
+      - run: cargo build --locked
+      - run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: examples/mcp-client/package-lock.json
+      - run: npm ci --prefix examples/mcp-client --ignore-scripts
+      - name: Native SDK and complete demo
+        env:
+          WAYPOST_ADMIN_SECRET: ci-only-admin-secret-32-bytes-long
+          WAYPOST_PUBLIC_ORIGIN: http://127.0.0.1:8787
+        run: |
+          target/debug/waypost serve --data /tmp/waypost-ci --listen 127.0.0.1:8787 &
+          service_pid=$!
+          trap 'kill "$service_pid"' EXIT
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then break; fi
+            sleep 1
+          done
+          node examples/mcp-client/demo.mjs
+          python3 examples/demo.py --output /tmp/waypost-demo
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --no-default-features --features cloudflare --target wasm32-unknown-unknown
+      - run: cargo clippy --locked --no-default-features --features cloudflare --target wasm32-unknown-unknown -- -D warnings
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the container
+        run: |
+          docker build -t waypost:ci .
+          docker run -d --name waypost-ci -p 127.0.0.1:8788:8787 -e WAYPOST_PUBLIC_ORIGIN=http://127.0.0.1:8788 -e WAYPOST_ADMIN_SECRET=ci-only-admin-secret-32-bytes-long waypost:ci
+          trap 'docker rm -f waypost-ci' EXIT
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent http://127.0.0.1:8788/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8788/health
+          test "$(docker exec waypost-ci id -u)" = 10001

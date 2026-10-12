@@ -7,6 +7,8 @@ RFC 定义可以据以实现和验证的公开行为：目的、范围、契约�
 | [0001：异步信箱与记忆交换](0001-async-mailbox-and-memory-sync.md) | Draft / implementation baseline | [性质与验证计划](0001-properties.md) |
 | [0002：管理 Dashboard 与内容检查](0002-operator-dashboard.md) | Draft / implementation baseline | [Rust 数据模型](../design/0001-rust-data-model.md) |
 
+| [0003：Agent 消息隐私策略](0003-agent-privacy-policies.md) | Implementation baseline | 本地规则、名单、脱敏与阻止发布 |
+
 ## 变更约定
 
 - `Draft` 表示已经写出实现基线，尚未通过实际互操作验证；不是已运行产品。

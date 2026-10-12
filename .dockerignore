@@ -1,0 +1,14 @@
+.git
+.ml-cache
+.mainline
+.wrangler
+.agents
+.codex
+var
+build
+target
+node_modules
+**/node_modules
+**/__pycache__
+.dev.vars*
+.env*

@@ -1,0 +1,6 @@
+ALTER TABLE spaces ADD COLUMN privacy_revision INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE privacy_updates(space_id TEXT NOT NULL,revision INTEGER NOT NULL,nonce TEXT NOT NULL UNIQUE,PRIMARY KEY(space_id,revision),FOREIGN KEY(space_id) REFERENCES spaces(space_id));
+CREATE TABLE privacy_policies(space_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL,mode TEXT NOT NULL CHECK(mode IN('redact','block')),all_agents INTEGER NOT NULL,allow_uninspected_attachments INTEGER NOT NULL,FOREIGN KEY(space_id) REFERENCES spaces(space_id));
+CREATE TABLE privacy_targets(space_id TEXT NOT NULL,actor_id TEXT NOT NULL,PRIMARY KEY(space_id,actor_id),FOREIGN KEY(space_id,actor_id) REFERENCES actors(space_id,actor_id));
+CREATE TABLE privacy_rules(space_id TEXT NOT NULL,rule_id TEXT NOT NULL,position INTEGER NOT NULL,kind TEXT NOT NULL,value TEXT,PRIMARY KEY(space_id,rule_id),UNIQUE(space_id,position),FOREIGN KEY(space_id) REFERENCES spaces(space_id));
+CREATE TABLE privacy_audit(space_id TEXT NOT NULL,submission_id TEXT NOT NULL,privacy_revision INTEGER NOT NULL,action TEXT NOT NULL,rule_id TEXT NOT NULL,field TEXT NOT NULL,count INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(submission_id,rule_id,field),FOREIGN KEY(submission_id) REFERENCES submissions(submission_id));
