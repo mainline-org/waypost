@@ -8,6 +8,7 @@ use crate::{
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use wasm_bindgen::JsValue;
 use worker::{
@@ -335,19 +336,91 @@ fn convert(response: Response) -> worker::Result<worker::Response> {
 }
 #[event(fetch)]
 pub async fn fetch(
-    mut raw: worker::Request,
+    raw: worker::Request,
     env: Env,
     _ctx: Context,
 ) -> worker::Result<worker::Response> {
-    let database = env.d1("DB")?;
-    let session = database.with_session(Some("first-primary"))?;
+    let https = raw.url()?.scheme() == "https";
+    let mut response = match handle_fetch(raw, env).await {
+        Ok(response) => response,
+        Err(_) => error_response(Error::storage())?,
+    };
+    for (name, value) in [
+        ("cache-control", "no-store"),
+        ("x-content-type-options", "nosniff"),
+        ("referrer-policy", "no-referrer"),
+    ] {
+        response.headers_mut().set(name, value)?;
+    }
+    if https {
+        response
+            .headers_mut()
+            .set("strict-transport-security", "max-age=31536000")?;
+    }
+    Ok(response)
+}
+
+async fn handle_fetch(mut raw: worker::Request, env: Env) -> worker::Result<worker::Response> {
+    let production = env
+        .var("DEPLOYMENT_ENV")
+        .is_ok_and(|value| value.to_string() == "production");
     let config = Config {
         admin_secret: env.secret("WAYPOST_ADMIN_SECRET")?.to_string(),
         public_origin: env.var("PUBLIC_ORIGIN")?.to_string(),
     };
-    if config.admin_secret.len() < 32 {
+    let origin = worker::Url::parse(&config.public_origin)
+        .map_err(|_| worker::Error::from("Invalid public origin"))?;
+    if config.admin_secret.len() < 32
+        || !matches!(origin.scheme(), "http" | "https")
+        || origin.origin().ascii_serialization() != config.public_origin
+        || (production && origin.scheme() != "https")
+    {
         return error_response(Error::storage());
     }
+    if raw
+        .headers()
+        .get("origin")?
+        .is_some_and(|value| value != config.public_origin)
+    {
+        return error_response(Error::forbidden());
+    }
+    // Production must not silently omit abuse controls when a binding is missing.
+    let admin_limiter = env.rate_limiter("ADMIN_RATE_LIMITER");
+    let api_limiter = env.rate_limiter("API_RATE_LIMITER");
+    if production && (admin_limiter.is_err() || api_limiter.is_err()) {
+        return error_response(Error::storage());
+    }
+    let path = raw.path();
+    let limiter = if path == "/admin/session" && raw.method() == worker::Method::Post {
+        admin_limiter.ok()
+    } else if path == "/mcp"
+        || path == "/ready"
+        || path.starts_with("/v0/")
+        || path.starts_with("/admin/v0/")
+    {
+        api_limiter.ok()
+    } else {
+        None
+    };
+    if let Some(limiter) = limiter {
+        let ip = raw
+            .headers()
+            .get("cf-connecting-ip")?
+            .unwrap_or_else(|| "local".into());
+        let outcome = limiter
+            .limit(format!("ip:{}", hex::encode(Sha256::digest(ip.as_bytes()))))
+            .await?;
+        if !outcome.success {
+            let mut response = error_response(Error::new(
+                "RATE_LIMITED",
+                "Request rate limit exceeded; retry later.",
+            ))?;
+            response.headers_mut().set("retry-after", "60")?;
+            return Ok(response);
+        }
+    }
+    let database = env.d1("DB")?;
+    let session = database.with_session(Some("first-primary"))?;
     // Conservative Free-tier profile. Public describe reports these exact limits.
     let limits = Limits {
         max_json_bytes: 16384,
@@ -372,6 +445,22 @@ pub async fn fetch(
         headers: raw.headers().entries().collect(),
         body: vec![],
     };
+    if request.path == "/ready" && request.method == "GET" {
+        let readiness: Result<Value> = async {
+            app.admin_auth(&request)?;
+            let migrations = ["0001_identity_mailbox.sql", "0002_receipts.sql", "0003_blobs_memory.sql", "0004_privacy.sql", "0005_admin_sessions.sql", "0006_grant_integrity.sql"];
+            let rows = app.db.query(Statement::new("SELECT count(*) AS applied FROM d1_migrations WHERE name IN (?,?,?,?,?,?)", migrations.into_iter().map(Sql::from).collect())).await?;
+            if rows.first().map(|row| integer(row, "applied")).transpose()? != Some(6) {
+                return Err(Error::storage());
+            }
+            app.objects.inspect("_waypost_readiness_probe").await?;
+            Ok(json!({"status":"ready","schema_revision":6,"environment":if production {"production"} else {"development"}}))
+        }.await;
+        return match readiness {
+            Ok(data) => convert(Response::json(200, json!({"ok":true,"data":data}))),
+            Err(error) => error_response(error),
+        };
+    }
     let parts = request
         .path
         .trim_matches('/')
