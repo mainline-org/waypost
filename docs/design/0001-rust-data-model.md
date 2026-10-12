@@ -504,7 +504,7 @@ pub trait MetadataStore {
 }
 ```
 
-实际文件可以按身份、发布、读取分区，首版不建立通用 Repository<T>、SQL字符串透传接口或动态插件注册。上述 async trait用于编译期注入，不要求 dyn对象、Send Future或 async_trait宏；Worker的运行限制保留在适配器内。
+上述 MetadataStore 为设计阶段的原子操作草图。实现阶段按 [ADR-0001](../adr/0001-internal-sql-driver.md) 修订执行边界：共享核心持有具名领域操作和发布规则，SQLite/D1 只实现 crate-private SQL 驱动。原始 SQL 不作为客户端或 Rust 公共存储 API；不建立通用 Repository<T> 或动态插件注册。Future 保持本地，不要求 Send 或 async_trait；Worker 的流式字节处理保留在适配器内。
 
 ### 6.1 参数与结果
 

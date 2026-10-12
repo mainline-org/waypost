@@ -32,7 +32,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let cookie = session_cookie(request)?;
         self.valid_session(&cookie).await?;
         if request.method != "GET" {
-            let csrf = self.sign_cursor(&format!("csrf|{cookie}"))?;
+            let csrf = self.csrf_token(&cookie)?;
             let supplied = request
                 .headers
                 .get("x-waypost-csrf")
@@ -42,6 +42,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             }
         }
         Ok(())
+    }
+    fn csrf_token(&self, cookie: &str) -> Result<String> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.config.admin_secret.as_bytes())
+            .map_err(|_| Error::storage())?;
+        mac.update(b"waypost-admin-csrf\0");
+        mac.update(cookie.as_bytes());
+        Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
     }
     async fn valid_session(&self, cookie: &str) -> Result<()> {
         let rows=self.db.query(Statement::new("SELECT 1 AS valid FROM admin_sessions WHERE session_digest=? AND admin_fingerprint=? AND expires_at>?",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(self.config.admin_secret.as_bytes()).to_vec().into(),self.clock.now_ms().into()])).await?;
@@ -88,7 +95,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let expires = now + 8 * 60 * 60 * 1000;
             self.db.batch(vec![Statement::new("DELETE FROM admin_sessions WHERE expires_at<=?",vec![now.into()]),Statement::new("INSERT INTO admin_sessions(session_digest,admin_fingerprint,created_at,expires_at) VALUES(?,?,?,?)",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(self.config.admin_secret.as_bytes()).to_vec().into(),now.into(),expires.into()])]).await?;
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.sign_cursor(&format!("csrf|{cookie}"))?,"expires_at":stamp(expires)?}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"expires_at":stamp(expires)?}),
                 Some(format!(
                     "waypost_admin={cookie}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=28800{secure}"
                 )),
@@ -98,7 +105,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         self.admin_access(request).await?;
         if request.method == "GET" {
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.sign_cursor(&format!("csrf|{cookie}"))?}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?}),
                 None,
             ));
         }
@@ -118,10 +125,80 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         Err(Error::not_found())
     }
+    pub(crate) async fn admin_registry(&self, body: Value) -> Result<Value> {
+        fields(&body, &["kind", "space_id", "cursor", "limit"])?;
+        let kind = required(&body, "kind")?;
+        let (table, id) = match kind.as_str() {
+            "spaces" => ("spaces", "space_id"),
+            "actors" => ("actors", "actor_id"),
+            "consumers" => ("consumers", "consumer_id"),
+            _ => return Err(Error::invalid("Unknown registry kind.")),
+        };
+        let space = if kind == "spaces" {
+            None
+        } else {
+            let sid = required(&body, "space_id")?;
+            self.admin_space(&sid).await?;
+            Some(sid)
+        };
+        let scope = fingerprint(&json!({"kind":kind,"space_id":space}))?;
+        let mut sql = format!("SELECT * FROM {table} WHERE 1=1");
+        let mut args = vec![];
+        if let Some(sid) = &space {
+            sql.push_str(" AND space_id=?");
+            args.push(sid.clone().into());
+        }
+        if let Some(cursor) = body.get("cursor").filter(|v| !v.is_null()) {
+            let payload = self.verify_cursor(
+                cursor
+                    .as_str()
+                    .ok_or_else(|| Error::new("INVALID_CURSOR", "Invalid registry cursor."))?,
+            )?;
+            let values = payload.split('|').collect::<Vec<_>>();
+            if values.len() != 4 || values[0] != "ar1" || values[1] != scope {
+                return Err(Error::new(
+                    "INVALID_CURSOR",
+                    "Registry cursor belongs to another query.",
+                ));
+            }
+            let time = values[2]
+                .parse::<i64>()
+                .map_err(|_| Error::new("INVALID_CURSOR", "Invalid cursor time."))?;
+            check_id(values[3])?;
+            sql.push_str(&format!(" AND (created_at>? OR (created_at=? AND {id}>?))"));
+            args.extend(vec![time.into(), time.into(), values[3].into()]);
+        }
+        let limit = super::mailbox::page_limit(&body, self.limits.max_page_size)?;
+        sql.push_str(&format!(" ORDER BY created_at,{id} LIMIT ?"));
+        args.push(((limit + 1) as i64).into());
+        let mut rows = self.db.query(Statement::new(sql, args)).await?;
+        let more = rows.len() > limit;
+        rows.truncate(limit);
+        let cursor = rows
+            .last()
+            .map(|r| {
+                self.sign_cursor(&format!(
+                    "ar1|{scope}|{}|{}",
+                    integer(r, "created_at")?,
+                    text(r, id)?
+                ))
+            })
+            .transpose()?;
+        Ok(
+            json!({"items":rows.iter().map(row_value).collect::<Vec<_>>(),"has_more":more,"next_cursor":cursor}),
+        )
+    }
     pub(crate) async fn admin_inspect(&self, sid: &str, body: Value) -> Result<Value> {
         fields(
             &body,
-            &["kind", "actor_id", "resource_id", "cursor", "limit"],
+            &[
+                "kind",
+                "actor_id",
+                "resource_id",
+                "cursor",
+                "limit",
+                "revision",
+            ],
         )?;
         let kind = required(&body, "kind")?;
         if kind == "message" {
@@ -144,6 +221,49 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             value["thread_id"] = json!(text(r, "thread_id")?);
             value["committed_at"] = json!(stamp(integer(r, "committed_at")?)?);
             return Ok(value);
+        }
+        if kind == "memory" {
+            let cid = required(&body, "resource_id")?;
+            let c = self.admin_collection(sid, &cid).await?;
+            let revision = match body.get("revision") {
+                None | Some(Value::Null) => {
+                    c["current_revision"].as_i64().ok_or_else(Error::storage)?
+                }
+                Some(v) => v
+                    .as_i64()
+                    .filter(|r| *r >= 0)
+                    .ok_or_else(|| Error::invalid("Invalid revision."))?,
+            };
+            if revision>0 && self.db.query(Statement::new("SELECT 1 AS exists_revision FROM memory_revisions WHERE space_id=? AND collection_id=? AND revision=?",vec![sid.into(),cid.clone().into(),revision.into()])).await?.is_empty(){return Err(Error::not_found())}
+            let rows=self.db.query(Statement::new("SELECT item_id,blob_id,path,metadata,deleted_in_revision FROM memory_revision_items WHERE space_id=? AND collection_id=? AND revision=? ORDER BY item_id LIMIT 101",vec![sid.into(),cid.into(),revision.into()])).await?;
+            let mut items = vec![];
+            for row in rows.iter().take(100) {
+                let mut value = row_value(row);
+                value["metadata"] = crate::json::parse(
+                    text(row, "metadata")?.as_bytes(),
+                    self.limits.max_blob_bytes as usize,
+                )?;
+                items.push(value);
+            }
+            return Ok(
+                json!({"collection":c,"revision":revision,"items":items,"has_more":rows.len()>100,"limit":100}),
+            );
+        }
+        if kind == "blob_content" {
+            let id = required(&body, "resource_id")?;
+            check_id(&id)?;
+            let rows = self
+                .db
+                .query(Statement::new(
+                    "SELECT * FROM blobs WHERE space_id=? AND blob_id=?",
+                    vec![sid.into(), id.clone().into()],
+                ))
+                .await?;
+            let row = rows.first().ok_or_else(Error::not_found)?;
+            let bytes = self.objects.read(&text(row, "object_key")?).await?;
+            return Ok(
+                json!({"blob_id":id,"content_type":text(row,"content_type")?,"size_bytes":integer(row,"size_bytes")?,"sha256":hex::encode(blob(row,"sha256")?),"text":std::str::from_utf8(&bytes).ok(),"inspection":"UTF-8 text rendering; other binary data is not rendered"}),
+            );
         }
         if kind == "memory_revision" {
             let cid = required(&body, "resource_id")?;

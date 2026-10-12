@@ -19,6 +19,17 @@ async fn admin_sessions_expire_on_logout_and_inspection_does_not_acknowledge_mes
     let data: Value = serde_json::from_slice(&response.body).unwrap();
     let csrf = data["data"]["csrf_token"].as_str().unwrap();
     let cookie = response.headers["set-cookie"].split(';').next().unwrap();
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let secret = cookie.split_once('=').unwrap().1.as_bytes();
+    for part in csrf.split('.') {
+        if let Ok(decoded) = URL_SAFE_NO_PAD.decode(part) {
+            assert!(
+                !decoded.windows(secret.len()).any(|bytes| bytes == secret),
+                "CSRF token must not disclose the HttpOnly session credential"
+            );
+        }
+    }
+
     let mut request = Request::json(
         "POST",
         &format!("/admin/v0/spaces/{}/inspect", f.sid()),

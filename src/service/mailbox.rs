@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     domain::{Send, check_id, check_request_id},
     json::{fields, required},
-    storage::optional_text,
+    storage::driver::optional_text,
 };
 
 impl<D: Database, O: ObjectStore> App<D, O> {
@@ -135,10 +135,52 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         self.current(p).await?;
         Ok(row)
     }
+    pub(crate) async fn fail_submission(
+        &self,
+        p: &Principal,
+        row: &Row,
+        error: Error,
+    ) -> Result<Value> {
+        if !matches!(
+            error.code,
+            "INVALID_ARGUMENT" | "RESOURCE_LIMIT" | "PRIVACY_BLOCKED"
+        ) {
+            return Err(error);
+        }
+        let (authority, args) = self.authority_guard(p);
+        let mut parameters = vec![error.code.into(), text(row, "submission_id")?.into()];
+        parameters.extend(args);
+        self.db.batch(vec![Statement::new(format!("UPDATE submissions SET state='failed',error_code=? WHERE submission_id=? AND state IN('reserved','prepared') AND {authority}"),parameters)]).await?;
+        self.current(p).await?;
+        let rows = self
+            .db
+            .query(Statement::new(
+                "SELECT * FROM submissions WHERE submission_id=?",
+                vec![text(row, "submission_id")?.into()],
+            ))
+            .await?;
+        let row = rows.first().ok_or_else(Error::storage)?;
+        if text(row, "state")? == "committed" {
+            return self.committed_result(row);
+        }
+        if text(row, "state")? == "failed" {
+            return Err(recorded_error(row)?);
+        }
+        Err(Error::new(
+            "SUBMISSION_PENDING",
+            "Submission outcome is pending.",
+        ))
+    }
     pub(crate) async fn send(&self, p: &Principal, value: Value) -> Result<Value> {
         p.require("message.send")?;
         let mut input: Send = crate::json::decode(value)?;
         input.validate()?;
+        if input.attachment_ids.len() > self.limits.max_message_attachments {
+            return Err(Error::new(
+                "RESOURCE_LIMIT",
+                "Too many attachments for this deployment.",
+            ));
+        }
         let mut recipients = input
             .recipient_ids
             .clone()
@@ -153,21 +195,32 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         if recipients.iter().any(|id| !allowed.contains(id)) {
             return Err(Error::forbidden());
         }
+        let previous = self
+            .submission(p, "message.send", &input.request_id)
+            .await?;
         let mut new_thread = input.thread_id.is_none() && input.in_reply_to.is_none();
         if let Some(original) = &input.in_reply_to {
-            let original = self.message(p, original).await?;
-            let thread = original["thread_id"].as_str().ok_or_else(Error::storage)?;
-            if input.thread_id.as_ref().is_some_and(|id| id != thread) {
-                return Err(Error::invalid("Reply belongs to another thread."));
+            if let Some(row) = previous
+                .as_ref()
+                .filter(|r| matches!(text(r, "state").as_deref(), Ok("committed" | "failed")))
+            {
+                // Recover the original normalized thread before revalidating mutable reply-read grants.
+                if input.thread_id.is_none() {
+                    input.thread_id = Some(text(row, "thread_id")?);
+                }
+            } else {
+                let original = self.message(p, original).await?;
+                let thread = original["thread_id"].as_str().ok_or_else(Error::storage)?;
+                if input.thread_id.as_ref().is_some_and(|id| id != thread) {
+                    return Err(Error::invalid("Reply belongs to another thread."));
+                }
+                input.thread_id = Some(thread.into());
             }
-            input.thread_id = Some(thread.into());
             new_thread = false;
         }
         let normalized = serde_json::to_value(&input).map_err(|_| Error::storage())?;
         let fp = fingerprint(&normalized)?;
-        if let Some(row) = self
-            .submission(p, "message.send", &input.request_id)
-            .await?
+        if let Some(row) = previous
             && let Some(result) = self.existing_result(&row, &fp)?
         {
             self.current(p).await?;
@@ -221,7 +274,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         let message_id = text(&row, "resource_id")?;
         let tid = text(&row, "thread_id")?;
-        let filtered = self.filter_message(p, &row, input).await?;
+        let filtered = match self.filter_message(p, &row, input).await {
+            Ok(filtered) => filtered,
+            Err(error) => return self.fail_submission(p, &row, error).await,
+        };
         let input = filtered.input;
         let body_key = format!("body_{message_id}_p{}", filtered.revision);
         let mut published = serde_json::to_value(&input).map_err(|_| Error::storage())?;
@@ -231,10 +287,16 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             .remove("request_id");
         let bytes = crate::json::canonical(&published)?;
         if bytes.len() > self.limits.max_json_bytes {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "Filtered message exceeds deployment limit.",
-            ));
+            return self
+                .fail_submission(
+                    p,
+                    &row,
+                    Error::new(
+                        "RESOURCE_LIMIT",
+                        "Filtered message exceeds deployment limit.",
+                    ),
+                )
+                .await;
         }
         let row = self
             .prepared(p, &row, &body_key, &bytes, "application/json")
@@ -372,12 +434,15 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             p.actor_id.clone().into(),
         ];
         args.extend(auth_args);
-        let rows=self.db.query(Statement::new(format!("SELECT m.* FROM messages m WHERE m.space_id=? AND m.message_id=? AND (?=1 OR m.producer_id=? OR EXISTS(SELECT 1 FROM message_recipients mr WHERE mr.space_id=m.space_id AND mr.message_id=m.message_id AND mr.actor_id=?)) AND {authority}"),args)).await?;
+        let rows=self.db.query(Statement::new(format!("SELECT m.*,s.body_sha256,s.body_size FROM messages m JOIN submissions s ON s.submission_id=m.submission_id WHERE m.space_id=? AND m.message_id=? AND (?=1 OR m.producer_id=? OR EXISTS(SELECT 1 FROM message_recipients mr WHERE mr.space_id=m.space_id AND mr.message_id=m.message_id AND mr.actor_id=?)) AND {authority}"),args)).await?;
         let row = rows.first().ok_or_else(Error::not_found)?;
-        let mut value = crate::json::parse(
-            &self.objects.read(&text(row, "body_ref")?).await?,
-            self.limits.max_json_bytes,
-        )?;
+        let bytes = self.objects.read(&text(row, "body_ref")?).await?;
+        if bytes.len() as i64 != integer(row, "body_size")?
+            || Sha256::digest(&bytes).as_slice() != blob(row, "body_sha256")?.as_slice()
+        {
+            return Err(Error::storage());
+        }
+        let mut value = crate::json::parse(&bytes, self.limits.max_json_bytes)?;
         let object = value.as_object_mut().ok_or_else(Error::storage)?;
         for (key, v) in [
             ("message_id", json!(text(row, "message_id")?)),
@@ -497,6 +562,8 @@ pub(crate) fn recorded_error(r: &Row) -> Result<Error> {
         "FORBIDDEN" => "FORBIDDEN",
         "BLOB_NOT_SEALED" => "BLOB_NOT_SEALED",
         "UPLOAD_EXPIRED" => "UPLOAD_EXPIRED",
+        "RESOURCE_LIMIT" => "RESOURCE_LIMIT",
+        "PRIVACY_BLOCKED" => "PRIVACY_BLOCKED",
         _ => return Err(Error::storage()),
     };
     let mut e = Error::new(known, "The original submission failed.");

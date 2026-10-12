@@ -14,8 +14,13 @@ async function api(path, method = 'GET', body) {
 }
 function showLogin() {csrf = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
 async function entered(session) {csrf = session.csrf_token; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
+async function registry(kind, space_id) {
+  let cursor = null; const items = [];
+  do {const result = await api('/admin/v0/registry', 'POST', {kind, ...(space_id ? {space_id} : {}), cursor, limit: 20}); items.push(...result.items); cursor = result.has_more ? result.next_cursor : null;} while (cursor);
+  return items;
+}
 async function loadSpaces() {
-  spaces = (await api('/admin/v0/spaces')).spaces;
+  spaces = await registry('spaces');
   const select = $('#space'); select.replaceChildren();
   for (const space of spaces) {const opt = el('option', space.display_name); opt.value = space.space_id; select.append(opt);}
   if (!spaces.some(s => s.space_id === sid)) sid = spaces[0]?.space_id || '';
@@ -29,10 +34,10 @@ async function load(append = false) {
   $('#subtitle').textContent = tab === 'feed' ? '这些是 Waypost 记录的投递、记忆修订与回执。内部工具行为需由 Agent 主动报告。' : tab === 'privacy' ? '按参与 Agent 选择脱敏或阻止；本地规则不向外部模型发送原文。' : '持久化记录可以检查、重试和恢复。';
   if (!append) {$('#content').replaceChildren(); cursor = null; $('#more').hidden = true;}
   if (!sid) {$('#content').append(el('div', '还没有工作空间。新建一个空间开始接入 Agent。', 'empty')); return;}
-  actors = (await api(`/admin/v0/spaces/${sid}/actors`)).actors;
+  actors = await registry('actors', sid);
   if (tab === 'agents') {renderAgents(); return;}
   if (tab === 'privacy') {await renderPrivacy(); return;}
-  const result = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: tab, limit: 30, cursor});
+  const result = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: tab, limit: 20, cursor});
   cursor = result.next_cursor;
   if (!result.items.length && !append) $('#content').append(el('div', '还没有记录。Agent 接入后，这里会显示对应内容。', 'empty'));
   else if (result.items.length) renderTable(result.items);
@@ -40,7 +45,7 @@ async function load(append = false) {
 }
 function actorName(id) {return actors.find(a => a.actor_id === id)?.display_name || id || '—';}
 function date(value) {return value ? new Date(value).toLocaleString() : '—';}
-function showDetail(title, value) {$('#detail-title').textContent = title; $('#detail-body').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); $('#detail').showModal();}
+function showDetail(title, value) {$('#detail-title').textContent = title; $('#detail-body').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); if (!$('#detail').open) $('#detail').showModal();}
 function renderAgents() {
   const grid = el('div', undefined, 'grid');
   for (const actor of actors) {
@@ -51,7 +56,7 @@ function renderAgents() {
     card.append(el('p', '注册状态不代表运行在线。查看服务实际记录的活动。', 'muted'));
     const actions = el('div', undefined, 'row');
     actions.append(button('查看活动', async () => {
-      const result = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'feed', actor_id: actor.actor_id, limit: 30});
+      const result = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'feed', actor_id: actor.actor_id, limit: 20});
       showDetail(`${actor.display_name} · 最近的活动`, result.items);
     }));
     if (!actor.disabled && actor.kind === 'agent') actions.append(button('禁用', async () => {
@@ -87,7 +92,21 @@ function renderTable(items) {
         const message = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'message', resource_id: item.message_id});
         showDetail(message.subject, `${actorName(message.producer_id)} · ${message.kind}\n\n${message.body.text}\n\n${JSON.stringify({options: message.body.options, source: message.source, metadata: message.metadata, attachment_ids: message.attachment_ids}, null, 2)}`);
       } else if (tab === 'collections') {
-        showDetail(item.display_name, await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'memory_revision', resource_id: item.collection_id}));
+        const history = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'memory_revision', resource_id: item.collection_id});
+        $('#detail-title').textContent = item.display_name;
+        const body = $('#detail-body'); body.replaceChildren(el('p', `来源：${actorName(item.source_actor_id)} · 范围：${item.scope}`));
+        for (const revision of history.revisions) body.append(button(`revision ${revision.revision} · ${revision.active} 条内容`, async () => {
+          const state = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'memory', resource_id: item.collection_id, revision: revision.revision});
+          body.replaceChildren(el('p', `revision ${state.revision}${state.has_more ? ' · 当前显示前 100 项' : ''}`));
+          for (const entry of state.items) {
+            body.append(el('p', `${entry.path}${entry.deleted_in_revision ? ' · 已删除' : ''}`), button('查看资料', async () => {
+              const content = await api(`/admin/v0/spaces/${sid}/inspect`, 'POST', {kind: 'blob_content', resource_id: entry.blob_id});
+              showDetail(entry.path, content.text === null ? content : content.text);
+            }));
+          }
+        }));
+        if (!history.revisions.length) body.append(el('p', 'revision 0 · 空集合'));
+        if (!$('#detail').open) $('#detail').showModal();
       } else showDetail(titles[tab], item);
     }));
     if (tab === 'tokens' && !item.revoked_at) action.append(button('撤销', async () => {await api(`/admin/v0/tokens/${item.token_id}`, 'DELETE', {}); await load();}));
@@ -128,18 +147,36 @@ $('#login-form').addEventListener('submit', event => {event.preventDefault(); co
 $('#space').addEventListener('change', () => {sid = $('#space').value; busy($('#refresh'), () => load());});
 $('#refresh').addEventListener('click', () => busy($('#refresh'), () => load()));
 $('#more').addEventListener('click', () => busy($('#more'), () => load(true)));
-$('#logout').addEventListener('click', () => busy($('#logout'), async () => {await api('/admin/session', 'DELETE', {}); showLogin();}));
+$('#logout').addEventListener('click', () => busy($('#logout'), async () => {await api('/admin/session', 'DELETE', {}); finishCreation(); showLogin();}));
 $('#close-detail').addEventListener('click', () => {$('#detail').close(); $('#detail-body').replaceChildren();});
 document.querySelectorAll('nav button').forEach(node => node.addEventListener('click', () => busy(node, async () => {tab = node.dataset.tab; await load();})));
-$('#new-space').addEventListener('click', () => busy($('#new-space'), async () => {const name = prompt('空间名称'); if (!name?.trim()) return; const space = await api('/admin/v0/spaces', 'POST', {request_id: crypto.randomUUID(), display_name: name}); sid = space.space_id; await loadSpaces();}));
+// Persist only operation IDs/stages, never credentials, so lost responses resume one creation.
+function pendingCreation() {try {return JSON.parse(sessionStorage.getItem('waypost-pending-creation') || 'null');} catch {return null;}}
+function saveCreation(task) {sessionStorage.setItem('waypost-pending-creation', JSON.stringify(task));}
+function finishCreation() {sessionStorage.removeItem('waypost-pending-creation');}
+$('#new-space').addEventListener('click', () => busy($('#new-space'), async () => {
+  let task = pendingCreation();
+  if (task && task.type !== 'space') throw new Error('先点击接入 Agent，恢复尚未完成的接入。');
+  if (!task) {const name = prompt('空间名称'); if (!name?.trim()) return; task = {type: 'space', name, prefix: crypto.randomUUID()}; saveCreation(task);}
+  const space = await api('/admin/v0/spaces', 'POST', {request_id: task.prefix, display_name: task.name});
+  sid = space.space_id; finishCreation(); await loadSpaces();
+}));
 $('#add-agent').addEventListener('click', () => busy($('#add-agent'), async () => {
-  const name = prompt('Agent 名称，例如 Muse 或 Instict'); if (!name?.trim()) return;
-  const prefix = crypto.randomUUID();
-  const actor = await api(`/admin/v0/spaces/${sid}/actors`, 'POST', {request_id: `${prefix}-actor`, display_name: name, kind: 'agent'});
-  const consumer = await api(`/admin/v0/spaces/${sid}/consumers`, 'POST', {request_id: `${prefix}-consumer`, actor_id: actor.actor_id, view: 'inbox', filter: {}});
-  const collection = await api(`/admin/v0/spaces/${sid}/collections`, 'POST', {request_id: `${prefix}-collection`, source_actor_id: actor.actor_id, display_name: `${name} · 记忆`, scope: 'personal/default'});
-  const credential = await api(`/admin/v0/spaces/${sid}/tokens`, 'POST', {request_id: `${prefix}-token`, actor_id: actor.actor_id, consumer_id: consumer.consumer_id, scopes: ['message.send', 'message.read', 'receipt.write', 'blob.write', 'memory.write', 'memory.read'], resource_grants: {}});
-  showDetail('连接信息 · 原始凭据仅展示一次', {mcp_url: `${location.origin}/mcp`, headers: {Authorization: `Bearer ${credential.token}`}, actor_id: actor.actor_id, consumer_id: consumer.consumer_id, collection_id: collection.collection_id, note: '保存到助手的私密 MCP 配置。默认投递给空间的用户入口；需要向其他 Agent 发信时，由所有者签发包含 recipient_ids 的新凭据。'});
-  await load();
+  let task = pendingCreation();
+  if (task && task.type !== 'agent') throw new Error('先点击新建空间，恢复尚未完成的创建。');
+  if (!task) {const name = prompt('Agent 名称，例如 Muse 或 Instict'); if (!name?.trim()) return; task = {type: 'agent', name, sid, prefix: crypto.randomUUID()}; saveCreation(task);}
+  const root = `/admin/v0/spaces/${task.sid}`;
+  if (!task.actor) {task.actor = await api(root + '/actors', 'POST', {request_id: task.prefix + '-actor', display_name: task.name, kind: 'agent'}); saveCreation(task);}
+  if (!task.consumer) {task.consumer = await api(root + '/consumers', 'POST', {request_id: task.prefix + '-consumer', actor_id: task.actor.actor_id, view: 'inbox', filter: {}}); saveCreation(task);}
+  if (!task.collection) {task.collection = await api(root + '/collections', 'POST', {request_id: task.prefix + '-collection', source_actor_id: task.actor.actor_id, display_name: task.name + ' · 记忆', scope: 'personal/default'}); saveCreation(task);}
+  let credential;
+  while (!credential?.token) {
+    if (task.revoke_token_id) {await api(`/admin/v0/tokens/${task.revoke_token_id}`, 'DELETE', {}); delete task.revoke_token_id; task.token_request_id = crypto.randomUUID(); saveCreation(task);}
+    if (!task.token_request_id) {task.token_request_id = task.prefix + '-token'; saveCreation(task);}
+    credential = await api(root + '/tokens', 'POST', {request_id: task.token_request_id, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, scopes: ['message.send', 'message.read', 'receipt.write', 'blob.write', 'memory.write', 'memory.read'], resource_grants: {}});
+    if (!credential.token) {task.revoke_token_id = credential.token_id; saveCreation(task);}
+  }
+  showDetail('连接信息 · 原始凭据仅展示一次', {mcp_url: `${location.origin}/mcp`, headers: {Authorization: `Bearer ${credential.token}`}, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, collection_id: task.collection.collection_id, note: '保存到助手的私密 MCP 配置。默认投递给空间的用户入口；需要向其他 Agent 发信时，由所有者签发包含 recipient_ids 的新凭据。'});
+  sid = task.sid; finishCreation(); await loadSpaces();
 }));
 api('/admin/session').then(entered).catch(() => showLogin());

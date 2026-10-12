@@ -12,3 +12,9 @@
 
 /node_modules/
 /examples/mcp-client/node_modules/
+
+/build/
+!/.dev.vars.example
+
+__pycache__/
+*.pyc

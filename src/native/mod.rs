@@ -1,7 +1,10 @@
 pub mod server;
 use crate::{
     error::{Error, Result},
-    storage::{Database, ObjectInfo, ObjectStore, Row, Statement, Value},
+    storage::{
+        ObjectInfo, ObjectStore,
+        driver::{Database, Row, Statement, Value},
+    },
 };
 use rusqlite::{
     Connection, params_from_iter,
@@ -85,6 +88,7 @@ impl SqliteDb {
             (3, include_str!("../../migrations/0003_blobs_memory.sql")),
             (4, include_str!("../../migrations/0004_privacy.sql")),
             (5, include_str!("../../migrations/0005_admin_sessions.sql")),
+            (6, include_str!("../../migrations/0006_grant_integrity.sql")),
         ] {
             let installed: bool = connection
                 .query_row(

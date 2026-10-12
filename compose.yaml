@@ -1,0 +1,12 @@
+services:
+  waypost:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      WAYPOST_PUBLIC_ORIGIN: http://127.0.0.1:8787
+    volumes:
+      - waypost-data:/data
+    restart: unless-stopped
+volumes:
+  waypost-data:

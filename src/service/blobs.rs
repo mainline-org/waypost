@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     domain::{check_id, check_request_id},
     json::{fields, required},
-    storage::optional_text,
+    storage::driver::optional_text,
 };
 
 impl<D: Database, O: ObjectStore> App<D, O> {
@@ -301,13 +301,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let row = self.sealed_blob(p, id).await?;
         if text(&row, "owner_actor_id")? == p.actor_id
             || p.grants.blob_reference_ids.contains(&id.to_string())
-            || p.has("space.observe")
         {
             self.current(p).await?;
             return Ok(row);
         }
-        if p.has("message.read") {
-            let rows=self.db.query(Statement::new("SELECT 1 AS readable FROM message_attachments a JOIN messages m ON m.space_id=a.space_id AND m.message_id=a.message_id WHERE a.space_id=? AND a.blob_id=? AND (m.producer_id=? OR EXISTS(SELECT 1 FROM message_recipients r WHERE r.space_id=m.space_id AND r.message_id=m.message_id AND r.actor_id=?)) LIMIT 1",vec![p.space_id.clone().into(),id.into(),p.actor_id.clone().into(),p.actor_id.clone().into()])).await?;
+        if p.has("message.read") || p.has("space.observe") {
+            let rows=self.db.query(Statement::new("SELECT 1 AS readable FROM message_attachments a JOIN messages m ON m.space_id=a.space_id AND m.message_id=a.message_id WHERE a.space_id=? AND a.blob_id=? AND (?=1 OR m.producer_id=? OR EXISTS(SELECT 1 FROM message_recipients r WHERE r.space_id=m.space_id AND r.message_id=m.message_id AND r.actor_id=?)) LIMIT 1",vec![p.space_id.clone().into(),id.into(),p.has("space.observe").into(),p.actor_id.clone().into(),p.actor_id.clone().into()])).await?;
             if !rows.is_empty() {
                 self.current(p).await?;
                 return Ok(row);

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     domain::{Send, check_id},
-    storage::optional_text,
+    storage::driver::optional_text,
 };
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -77,36 +77,80 @@ fn compile(kind: &str, value: Option<&str>) -> Result<Option<Regex>> {
     ))
 }
 impl Policy {
-    fn mask(&self, input: &str, field: &str, hits: &mut BTreeMap<(String, String), i64>) -> String {
+    fn mask(
+        &self,
+        input: &str,
+        field: &str,
+        hits: &mut BTreeMap<(String, String), i64>,
+        budget: &mut usize,
+    ) -> Result<String> {
+        if input.len() > *budget {
+            return Err(Error::new(
+                "RESOURCE_LIMIT",
+                "Privacy output exceeds deployment limit.",
+            ));
+        }
         let mut output = input.to_owned();
         for rule in &self.rules {
             if let Some(regex) = &rule.regex {
-                let count = regex.find_iter(&output).count();
+                let mut next = String::new();
+                let mut end = 0;
+                let mut count = 0;
+                for found in regex.find_iter(&output) {
+                    let part = &output[end..found.start()];
+                    if next.len() + part.len() + 10 > *budget {
+                        return Err(Error::new(
+                            "RESOURCE_LIMIT",
+                            "Privacy output exceeds deployment limit.",
+                        ));
+                    }
+                    next.push_str(part);
+                    next.push_str("[REDACTED]");
+                    end = found.end();
+                    count += 1;
+                }
                 if count > 0 {
-                    *hits.entry((rule.id.clone(), field.into())).or_default() += count as i64;
-                    output = regex.replace_all(&output, "[REDACTED]").into_owned()
+                    if next.len() + output.len() - end > *budget {
+                        return Err(Error::new(
+                            "RESOURCE_LIMIT",
+                            "Privacy output exceeds deployment limit.",
+                        ));
+                    }
+                    next.push_str(&output[end..]);
+                    *hits.entry((rule.id.clone(), field.into())).or_default() += count;
+                    output = next;
                 }
             }
         }
-        output
+        *budget -= output.len();
+        Ok(output)
     }
-    fn metadata(&self, input: &Value, hits: &mut BTreeMap<(String, String), i64>) -> Value {
-        match input {
-            Value::String(s) => json!(self.mask(s, "metadata.value", hits)),
+    fn metadata(
+        &self,
+        input: &Value,
+        hits: &mut BTreeMap<(String, String), i64>,
+        budget: &mut usize,
+    ) -> Result<Value> {
+        Ok(match input {
+            Value::String(s) => json!(self.mask(s, "metadata.value", hits, budget)?),
             Value::Number(n) => {
                 let text = n.to_string();
-                let masked = self.mask(&text, "metadata.value", hits);
+                let masked = self.mask(&text, "metadata.value", hits, budget)?;
                 if masked != text {
                     json!(masked)
                 } else {
                     input.clone()
                 }
             }
-            Value::Array(a) => Value::Array(a.iter().map(|v| self.metadata(v, hits)).collect()),
+            Value::Array(a) => Value::Array(
+                a.iter()
+                    .map(|v| self.metadata(v, hits, budget))
+                    .collect::<Result<Vec<_>>>()?,
+            ),
             Value::Object(o) => {
                 let mut result = serde_json::Map::new();
                 for (key, value) in o {
-                    let masked = self.mask(key, "metadata.key", hits);
+                    let masked = self.mask(key, "metadata.key", hits, budget)?;
                     let private = self.rules.iter().find(|r| {
                         r.kind == "metadata_key"
                             && r.value
@@ -114,12 +158,19 @@ impl Policy {
                                 .is_some_and(|v| v.eq_ignore_ascii_case(key))
                     });
                     let filtered = if let Some(rule) = private {
+                        if *budget < 10 {
+                            return Err(Error::new(
+                                "RESOURCE_LIMIT",
+                                "Privacy output exceeds deployment limit.",
+                            ));
+                        }
+                        *budget -= 10;
                         *hits
                             .entry((rule.id.clone(), "metadata.value".into()))
                             .or_default() += 1;
                         json!("[REDACTED]")
                     } else {
-                        self.metadata(value, hits)
+                        self.metadata(value, hits, budget)?
                     };
                     let mut unique = masked.clone();
                     let mut suffix = 1;
@@ -132,7 +183,7 @@ impl Policy {
                 Value::Object(result)
             }
             _ => input.clone(),
-        }
+        })
     }
 }
 impl<D: Database, O: ObjectStore> App<D, O> {
@@ -204,10 +255,11 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             return Ok(output);
         }
         let mut hits = BTreeMap::new();
-        input.subject = policy.mask(&input.subject, "subject", &mut hits);
-        input.body.text = policy.mask(&input.body.text, "body.text", &mut hits);
+        let mut budget = self.limits.max_json_bytes;
+        input.subject = policy.mask(&input.subject, "subject", &mut hits, &mut budget)?;
+        input.body.text = policy.mask(&input.body.text, "body.text", &mut hits, &mut budget)?;
         for option in &mut input.body.options {
-            *option = policy.mask(option, "body.options", &mut hits)
+            *option = policy.mask(option, "body.options", &mut hits, &mut budget)?
         }
         if let Some(source) = &mut input.source {
             for v in [
@@ -218,10 +270,14 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             .into_iter()
             .flatten()
             {
-                *v = policy.mask(v, "source.value", &mut hits)
+                *v = policy.mask(v, "source.value", &mut hits, &mut budget)?
             }
         }
-        let metadata = policy.metadata(&Value::Object(input.metadata.clone()), &mut hits);
+        let metadata = policy.metadata(
+            &Value::Object(input.metadata.clone()),
+            &mut hits,
+            &mut budget,
+        )?;
         input.metadata = metadata.as_object().cloned().ok_or_else(Error::storage)?;
         let sid = text(row, "submission_id")?;
         let now = self.clock.now_ms();
@@ -240,7 +296,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     )
                 })?;
                 policy
-                    .mask(text, "attachment.content", &mut hits)
+                    .mask(
+                        text,
+                        "attachment.content",
+                        &mut hits,
+                        &mut (self.limits.max_blob_bytes as usize),
+                    )?
                     .into_bytes()
             } else {
                 if !policy.allow_binary {
@@ -255,7 +316,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 original_bytes
             };
             let filename = optional_text(&original, "filename")
-                .map(|v| policy.mask(&v, "attachment.filename", &mut hits));
+                .map(|v| policy.mask(&v, "attachment.filename", &mut hits, &mut 256))
+                .transpose()?;
             if bytes.len() as u64 > self.limits.max_blob_bytes {
                 return Err(Error::new(
                     "RESOURCE_LIMIT",
@@ -333,7 +395,8 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let text = crate::json::required(&body, "text")?;
             let p = self.policy(sid).await?;
             let mut hits = BTreeMap::new();
-            let filtered = p.mask(&text, "preview.text", &mut hits);
+            let mut budget = self.limits.max_json_bytes;
+            let filtered = p.mask(&text, "preview.text", &mut hits, &mut budget)?;
             return Ok(
                 json!({"revision":p.revision,"mode":p.mode,"would_block":p.enabled && p.mode=="block" && !hits.is_empty(),"filtered_text":filtered,"hits":hits.into_iter().map(|((rule_id,field),count)|json!({"rule_id":rule_id,"field":field,"count":count})).collect::<Vec<_>>(),"preview_only":true}),
             );

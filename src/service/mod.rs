@@ -2,7 +2,10 @@ use crate::{
     domain::{FeedFilter, Principal, ResourceGrants},
     error::{Error, Result},
     http::{Request, Response},
-    storage::{Database, ObjectStore, Row, Statement, Value as Sql, blob, integer, text},
+    storage::{
+        ObjectStore,
+        driver::{Database, Row, Statement, Value as Sql, blob, integer, text},
+    },
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
@@ -27,6 +30,7 @@ pub struct Config {
 pub struct Limits {
     pub max_json_bytes: usize,
     pub max_blob_bytes: u64,
+    pub max_message_attachments: usize,
     pub max_inline_memory_changes: usize,
     pub max_manifest_memory_changes: usize,
     pub max_collection_items: usize,
@@ -37,6 +41,7 @@ impl Default for Limits {
         Self {
             max_json_bytes: 65536,
             max_blob_bytes: 8 * 1024 * 1024,
+            max_message_attachments: 16,
             max_inline_memory_changes: 500,
             max_manifest_memory_changes: 10000,
             max_collection_items: 10000,
@@ -70,6 +75,8 @@ pub struct App<D, O> {
     pub(crate) clock: Rc<dyn Clock>,
     pub(crate) limits: Limits,
 }
+// SQL execution is sealed inside this crate; callers use supported runtimes and domain HTTP/MCP operations.
+#[allow(private_bounds)]
 impl<D: Database, O: ObjectStore> App<D, O> {
     pub fn new(db: D, objects: O, config: Config) -> Self {
         Self {
@@ -326,8 +333,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     }
     pub(crate) async fn describe(&self, p: &Principal) -> Result<Value> {
         self.current(p).await?;
+        let mut collections = vec![];
+        let mut more = false;
+        if p.has("memory.read") || p.has("memory.write") {
+            let rows=self.db.query(Statement::new("SELECT c.* FROM memory_collections c WHERE c.space_id=? AND (c.source_actor_id=? OR EXISTS(SELECT 1 FROM token_collections tc WHERE tc.token_id=? AND tc.space_id=c.space_id AND tc.collection_id=c.collection_id AND ((tc.action='read' AND ?=1) OR (tc.action='write' AND ?=1)))) ORDER BY c.created_at,c.collection_id LIMIT ?",vec![p.space_id.clone().into(),p.actor_id.clone().into(),p.token_id.clone().into(),p.has("memory.read").into(),p.has("memory.write").into(),((self.limits.max_page_size+1) as i64).into()])).await?;
+            more = rows.len() > self.limits.max_page_size;
+            for row in rows.iter().take(self.limits.max_page_size) {
+                let id = text(row, "collection_id")?;
+                let own = text(row, "source_actor_id")? == p.actor_id;
+                collections.push(json!({"collection_id":id,"source_actor_id":text(row,"source_actor_id")?,"scope":text(row,"scope")?,"display_name":text(row,"display_name")?,"current_revision":integer(row,"current_revision")?,"can_read":p.has("memory.read") && (own || p.grants.memory_read_collection_ids.contains(&id)),"can_write":p.has("memory.write") && (own || p.grants.memory_write_collection_ids.contains(&id))}));
+            }
+        }
+        self.current(p).await?;
         Ok(
-            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_actor_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"limits":self.limits,"capabilities":{"privacy_filtering":true,"mailbox":true,"receipts":true,"blob_upload":true,"memory_snapshot":true,"memory_delta":true,"webhook_events":false,"oauth":false,"server_export":false}}),
+            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_actor_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"memory_collections":collections,"memory_collections_has_more":more,"limits":self.limits,"capabilities":{"privacy_filtering":true,"mailbox":true,"receipts":true,"blob_upload":true,"memory_snapshot":true,"memory_delta":true,"webhook_events":false,"oauth":false,"server_export":false}}),
         )
     }
     pub(crate) fn sign_cursor(&self, payload: &str) -> Result<String> {

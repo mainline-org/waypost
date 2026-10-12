@@ -82,3 +82,16 @@ async fn sealed_memory_snapshots_and_deltas_preserve_history_and_reject_stale_re
     .await;
     assert_eq!(after["revision"], 2);
 }
+#[tokio::test(flavor = "current_thread")]
+async fn canonical_numeric_metadata_does_not_create_spurious_revisions() {
+    let f = Fixture::new().await;
+    let blob = upload(&f, "numeric-blob", b"Same note").await;
+    let collection=call(&f.app,"POST",&format!("/admin/v0/spaces/{}/collections",f.sid()),ADMIN,json!({"request_id":"numeric-collection","source_actor_id":f.writer["actor_id"],"scope":"numbers","display_name":"Numbers"})).await;
+    let cid = collection["collection_id"].as_str().unwrap();
+    let path = format!("/v0/memory/collections/{cid}/revisions");
+    call(&f.app,"POST",&path,&f.writer_token,json!({"request_id":"numeric-first","expected_revision":0,"mode":"snapshot","items":[{"item_id":"note","blob_id":blob,"path":"note.md","metadata":{"count":1}}]})).await;
+    let same=call(&f.app,"POST",&path,&f.writer_token,json!({"request_id":"numeric-same","expected_revision":1,"mode":"snapshot","items":[{"item_id":"note","blob_id":blob,"path":"note.md","metadata":{"count":1.0}}]})).await;
+    assert_eq!(same["changed"], false);
+    assert_eq!(same["revision"], 1);
+    assert_eq!(f.writer_inbox().await["items"].as_array().unwrap().len(), 1);
+}

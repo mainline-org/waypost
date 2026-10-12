@@ -154,3 +154,12 @@ async fn privacy_filters_recipient_traffic_and_text_attachments_but_blocks_unins
     }
     assert_eq!(f.inbox().await["items"].as_array().unwrap().len(), 1);
 }
+#[tokio::test(flavor = "current_thread")]
+async fn expanding_privacy_rules_reject_content_at_the_output_budget() {
+    let f = Fixture::new().await;
+    call(&f.app,"PUT",&format!("/admin/v0/spaces/{}/privacy",f.sid()),ADMIN,json!({"expected_revision":0,"enabled":true,"mode":"redact","all_agents":true,"actor_ids":[],"rules":[{"kind":"regex","value":"a*"},{"kind":"regex","value":"b*"},{"kind":"regex","value":"c*"}]})).await;
+    let (status,error)=raw(&f.app,"POST","/v0/messages",&f.writer_token,json!({"request_id":"expansion","kind":"info","subject":"Budget","body":{"text":"x".repeat(2000)}})).await;
+    assert_eq!(status, 413);
+    assert_eq!(error["error"]["code"], "RESOURCE_LIMIT");
+    assert!(f.inbox().await["items"].as_array().unwrap().is_empty());
+}

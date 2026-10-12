@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     domain::{check_id, check_request_id},
     json::fields,
-    storage::optional_text,
+    storage::driver::optional_text,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -103,12 +103,11 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         rows.first().cloned().ok_or_else(Error::not_found)
     }
     pub(crate) fn can_read_collection(&self, p: &Principal, row: &Row) -> Result<bool> {
-        Ok(p.has("space.observe")
-            || (p.has("memory.read")
-                && (text(row, "source_actor_id")? == p.actor_id
-                    || p.grants
-                        .memory_read_collection_ids
-                        .contains(&text(row, "collection_id")?))))
+        Ok(p.has("memory.read")
+            && (text(row, "source_actor_id")? == p.actor_id
+                || p.grants
+                    .memory_read_collection_ids
+                    .contains(&text(row, "collection_id")?)))
     }
     async fn revision_items(
         &self,
@@ -186,7 +185,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "Manifest and inline changes are mutually exclusive.",
             ));
         }
-        let changes = if let Some(id) = &input.manifest_blob_id {
+        let mut changes = if let Some(id) = &input.manifest_blob_id {
             let r = self.reference_blob(p, id).await?;
             let bytes = self.objects.read(&text(&r, "object_key")?).await?;
             crate::json::decode::<Changes>(crate::json::parse(
@@ -208,8 +207,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 self.limits.max_inline_memory_changes
             },
         )?;
-        for item in &changes.items {
+        for item in &mut changes.items {
             self.reference_blob(p, &item.blob_id).await?;
+            // Compare the same JCS semantic representation that is persisted in historical rows.
+            item.metadata = crate::json::parse(
+                &crate::json::canonical(&item.metadata)?,
+                self.limits.max_blob_bytes as usize,
+            )?;
         }
         let row = self
             .reserve(p, "memory.publish", &input.request_id, &fp, cid, None, &[])
@@ -257,15 +261,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             );
         }
         if next.len() > self.limits.max_collection_items {
-            return Err(Error::new(
-                "RESOURCE_LIMIT",
-                "Collection exceeds deployment limit.",
-            ));
+            return self
+                .fail_submission(
+                    p,
+                    &row,
+                    Error::new("RESOURCE_LIMIT", "Collection exceeds deployment limit."),
+                )
+                .await;
         }
         let mut paths = BTreeSet::new();
         for item in next.values().filter(|i| i.deleted_in_revision.is_none()) {
             if !paths.insert(&item.item.path) {
-                return Err(Error::invalid("Resulting memory paths conflict."));
+                return self
+                    .fail_submission(p, &row, Error::invalid("Resulting memory paths conflict."))
+                    .await;
             }
         }
         let changed = next != old;
@@ -277,6 +286,18 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let bytes = crate::json::canonical(
             &json!({"collection_id":cid,"revision":revision,"items":next.values().collect::<Vec<_>>()}),
         )?;
+        if bytes.len() as u64 > self.limits.max_blob_bytes {
+            return self
+                .fail_submission(
+                    p,
+                    &row,
+                    Error::new(
+                        "RESOURCE_LIMIT",
+                        "Memory manifest exceeds deployment limit.",
+                    ),
+                )
+                .await;
+        }
         let object = if changed {
             Some(
                 self.objects
@@ -303,7 +324,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             params,
         )];
         if let Some(object) = object {
-            q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,sealed_at",vec![vec![p.space_id.clone().into(),manifest_id.clone().into(),p.actor_id.clone().into(),format!("object_{manifest_id}").into(),"application/json".into(),(object.size as i64).into(),object.sha256.into(),now.into()]],Some(guard.clone())));
+            q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,sealed_at",vec![vec![p.space_id.clone().into(),manifest_id.clone().into(),text(&collection,"source_actor_id")?.into(),format!("object_{manifest_id}").into(),"application/json".into(),(object.size as i64).into(),object.sha256.into(),now.into()]],Some(guard.clone())));
             q.extend(push_rows("memory_revisions","space_id,collection_id,revision,parent_revision,manifest_blob_id,publisher_actor_id,submission_id,committed_at",vec![vec![p.space_id.clone().into(),cid.into(),revision.into(),expected.into(),manifest_id.clone().into(),p.actor_id.clone().into(),sid.clone().into(),now.into()]],Some(guard.clone())));
             let mut items = Vec::new();
             for item in next.values() {

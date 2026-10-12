@@ -11,6 +11,9 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             .trim_matches('/')
             .split('/')
             .collect::<Vec<_>>();
+        if request.method == "POST" && parts.as_slice() == ["admin", "v0", "registry"] {
+            return self.admin_registry(body).await;
+        }
         if request.method == "GET" && parts.as_slice() == ["admin", "v0", "spaces"] {
             let rows = self
                 .db
