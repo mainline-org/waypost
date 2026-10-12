@@ -45,3 +45,4 @@ Dashboard 检查不会替任何 Consumer 确认消息。隐私规则检查 UTF-8
 - [原生、Docker 与 Cloudflare 运行/部署](docs/deployment.md)
 - [通用 Waypost Skill](skills/waypost/SKILL.md)
 - [内部存储边界 ADR](docs/adr/0001-internal-sql-driver.md)
+- [试用验证记录](docs/validation.md)

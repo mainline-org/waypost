@@ -266,6 +266,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     p,
                     &row,
                     Error::new("RESOURCE_LIMIT", "Collection exceeds deployment limit."),
+                    None,
                 )
                 .await;
         }
@@ -273,7 +274,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         for item in next.values().filter(|i| i.deleted_in_revision.is_none()) {
             if !paths.insert(&item.item.path) {
                 return self
-                    .fail_submission(p, &row, Error::invalid("Resulting memory paths conflict."))
+                    .fail_submission(
+                        p,
+                        &row,
+                        Error::invalid("Resulting memory paths conflict."),
+                        None,
+                    )
                     .await;
             }
         }
@@ -295,6 +301,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         "RESOURCE_LIMIT",
                         "Memory manifest exceeds deployment limit.",
                     ),
+                    None,
                 )
                 .await;
         }

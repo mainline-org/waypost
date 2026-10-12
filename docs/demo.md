@@ -59,3 +59,5 @@ WAYPOST_TOKEN="<private actor token>" python3 examples/consumer.py export --coll
 ```
 
 这是手动、单次运行的参考客户端，不自动执行收到的任务。未处理输入独立于收取游标；待 ACK 与写请求保留稳定 ID。生产者 outbox 绑定 Actor，ACK 与读取进度绑定 Consumer/视图/权限。宿主可通过自己确实具备的调度机制运行它。
+
+本机队列的领域参数使用固定列与子表：`outbound_requests` 保存稳定 ID、操作、正文与状态；`outbound_values` 保存收件人、资料引用、选项和 ACK；`outbound_memory_items` 保存待发布记忆条目。消息、记忆版本/条目和回执也有独立关系表，可以直接查询。任意 metadata 保留 JSON，原始入站传输内容和提交响应仅作归档。重放从关系行构造并检查稳定摘要，旧试用版 JSON 队列会在事务内升级，保留原请求与待处理状态。

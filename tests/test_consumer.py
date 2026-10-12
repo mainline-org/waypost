@@ -98,6 +98,74 @@ class ConsumerContracts(unittest.TestCase):
         message=target.request('GET','/v0/messages/'+feed['items'][0]['resource_id'])
         self.assertEqual(message['body']['text'],body['body']['text'])
 
+    def test_outbound_parameters_are_relational_and_replay_exactly_after_restart(self):
+        trial = setup(self.url, ADMIN)
+        body = {'request_id': trial['prefix'] + '-relational', 'kind': 'question', 'subject': 'A durable question', 'recipient_ids': [trial['instict']['actor_id']], 'body': {'text': 'Choose an option.', 'options': ['one', 'two']}, 'source': {'native_thread_id': None, 'url': 'https://example.org/context'}, 'attachment_ids': [], 'metadata': {'origin': 'explicit'}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'consumer.sqlite'
+            consumer = Consumer(path, trial['owner'])
+            with consumer.db:
+                consumer.enqueue('message.send', '/v0/messages', body)
+            consumer.close()
+            reopened = Consumer(path, trial['owner'])
+            row = reopened.db.execute('SELECT * FROM outbound_requests').fetchone()
+            self.assertEqual(row['body_text'], 'Choose an option.')
+            self.assertNotIn('body', row.keys())
+            recipients = reopened.db.execute("SELECT value FROM outbound_values WHERE field='recipient_ids' ORDER BY position").fetchall()
+            self.assertEqual([r['value'] for r in recipients], body['recipient_ids'])
+            self.assertEqual(reopened.outbound_body(row), body)
+            with self.assertRaises(ValueError):
+                with reopened.db:
+                    reopened.enqueue('message.send', '/v0/messages', dict(body, subject='Different'))
+            reopened.recover()
+            self.assertEqual(reopened.db.execute('SELECT state FROM outbound_requests').fetchone()[0], 'committed')
+            reopened.close()
+
+    def test_memory_and_ack_links_are_queryable_without_decoding_an_archive(self):
+        trial = setup(self.url, ADMIN)
+        cid = trial['collection']['collection_id']
+        blob = upload(trial['source'], trial['prefix'] + '-relational-note', b'A source note.')
+        body = {'request_id': trial['prefix'] + '-relational-memory', 'expected_revision': 0, 'mode': 'snapshot', 'items': [{'item_id': 'note', 'blob_id': blob, 'path': 'notes/source.md', 'metadata': {'origin': 'explicit'}}], 'delete_ids': []}
+        with tempfile.TemporaryDirectory() as directory:
+            producer_path = Path(directory) / 'producer.sqlite'
+            producer = Consumer(producer_path, trial['source'])
+            with producer.db:
+                producer.enqueue('memory.publish', '/v0/memory/collections/' + cid + '/revisions', body)
+            producer.close()
+            producer = Consumer(producer_path, trial['source'])
+            row = producer.db.execute('SELECT * FROM outbound_requests').fetchone()
+            self.assertEqual(producer.outbound_body(row), body)
+            producer.recover()
+            owner = Consumer(Path(directory) / 'owner.sqlite', trial['owner'])
+            self.assertEqual(owner.sync()['saved'], 1)
+            self.assertEqual(owner.db.execute('SELECT blob_id,path FROM local_memory_items').fetchone()['blob_id'], blob)
+            self.assertEqual(owner.db.execute('SELECT revision FROM local_memory_versions').fetchone()[0], 1)
+            self.assertEqual(owner.db.execute("SELECT stage FROM outbound_values WHERE field='receipt.items'").fetchone()[0], 'received')
+            producer.sync()
+            self.assertEqual(producer.db.execute('SELECT stage,version FROM local_receipt_updates').fetchone()['stage'], 'received')
+            owner.close()
+            producer.close()
+
+    def test_pre_release_json_queue_migration_preserves_the_original_pending_request(self):
+        trial = setup(self.url, ADMIN)
+        body = {'request_id': trial['prefix'] + '-legacy', 'kind': 'info', 'subject': 'Queued before upgrade', 'body': {'text': 'Resume the original request.'}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'consumer.sqlite'
+            before = Consumer(path, trial['source'])
+            binding = before.producer_binding
+            before.close()
+            with sqlite3.connect(path) as db:
+                db.execute('CREATE TABLE outbox(binding TEXT,operation TEXT,request_id TEXT,path TEXT,body BLOB,state TEXT,result BLOB)')
+                db.execute('INSERT INTO outbox VALUES(?,?,?,?,?,?,NULL)', (binding, 'message.send', body['request_id'], '/v0/messages', json.dumps(body).encode(), 'unknown'))
+            upgraded = Consumer(path, trial['source'])
+            row = upgraded.db.execute('SELECT * FROM outbound_requests').fetchone()
+            self.assertEqual(upgraded.outbound_body(row), body)
+            self.assertEqual(row['state'], 'unknown')
+            upgraded.recover()
+            self.assertEqual(upgraded.db.execute('SELECT state FROM outbound_requests').fetchone()[0], 'committed')
+            self.assertIsNone(upgraded.db.execute("SELECT name FROM sqlite_master WHERE name='outbox'").fetchone())
+            upgraded.close()
+
     def test_export_downloads_exact_historical_bytes_and_excludes_connection_credentials(self):
         trial = setup(self.url, ADMIN)
         source, owner = trial['source'], trial['owner']

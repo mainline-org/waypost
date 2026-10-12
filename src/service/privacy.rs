@@ -32,8 +32,8 @@ struct Rule {
     value: Option<String>,
     regex: Option<Regex>,
 }
-struct Policy {
-    revision: i64,
+pub(super) struct Policy {
+    pub(super) revision: i64,
     enabled: bool,
     mode: String,
     all_agents: bool,
@@ -187,7 +187,7 @@ impl Policy {
     }
 }
 impl<D: Database, O: ObjectStore> App<D, O> {
-    async fn policy(&self, space: &str) -> Result<Policy> {
+    pub(super) async fn policy(&self, space: &str) -> Result<Policy> {
         let rows=self.db.query(Statement::new("SELECT s.privacy_revision,p.enabled,p.mode,p.all_agents,p.allow_uninspected_attachments FROM spaces s LEFT JOIN privacy_policies p ON p.space_id=s.space_id WHERE s.space_id=?",vec![space.into()])).await?;
         let r = rows.first().ok_or_else(Error::not_found)?;
         let actors = self
@@ -229,13 +229,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             rules,
         })
     }
-    pub(crate) async fn filter_message(
+    pub(super) async fn filter_message(
         &self,
         p: &Principal,
         row: &Row,
         mut input: Send,
+        policy: Policy,
     ) -> Result<PrivacyOutput> {
-        let policy = self.policy(&p.space_id).await?;
         let mut output = PrivacyOutput {
             input: input.clone(),
             revision: policy.revision,

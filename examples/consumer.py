@@ -13,6 +13,7 @@ import urllib.request
 import uuid
 import zipfile
 from pathlib import Path
+from local_store import create_tables, save_outbound, outbound_body, save_inbound
 
 
 class ApiError(Exception):
@@ -110,12 +111,13 @@ class Consumer:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA synchronous=FULL')
+        self.db.execute('PRAGMA foreign_keys=ON')
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS cursors(binding TEXT PRIMARY KEY,cursor TEXT);
             CREATE TABLE IF NOT EXISTS inbox(binding TEXT NOT NULL,item_id TEXT NOT NULL,item_type TEXT NOT NULL,resource_id TEXT NOT NULL,resource_version INTEGER NOT NULL,content BLOB NOT NULL,stage TEXT NOT NULL DEFAULT 'received',PRIMARY KEY(binding,item_id));
             CREATE TABLE IF NOT EXISTS blobs(blob_id TEXT PRIMARY KEY,content_type TEXT NOT NULL,sha256 TEXT NOT NULL,content BLOB NOT NULL);
-            CREATE TABLE IF NOT EXISTS outbox(binding TEXT NOT NULL,operation TEXT NOT NULL,request_id TEXT NOT NULL,path TEXT NOT NULL,body BLOB NOT NULL,state TEXT NOT NULL,result BLOB,PRIMARY KEY(binding,operation,request_id));
         ''')
+        create_tables(self.db)
         identity = client.request('GET', '/v0/describe')
         self.identity = identity
         self.binding = hashlib.sha256(encoded({'origin': client.origin, 'space': identity['space_id'], 'actor': identity['actor_id'], 'consumer': identity['consumer_id'], 'view': identity['view_revision'], 'scopes': identity['scopes'], 'grants': identity['resource_grants']})).hexdigest()
@@ -126,41 +128,39 @@ class Consumer:
 
     def enqueue(self, operation, path, body):
         binding = self.binding if operation == 'receipt.ack' else self.producer_binding
-        key = body['request_id']
-        existing = self.db.execute('SELECT body,path FROM outbox WHERE binding=? AND operation=? AND request_id=?', (binding, operation, key)).fetchone()
-        if existing and (existing['body'] != encoded(body) or existing['path'] != path):
-            raise ValueError('Local request ID was already used with different content.')
-        self.db.execute('INSERT OR IGNORE INTO outbox(binding,operation,request_id,path,body,state) VALUES(?,?,?,?,?,?)', (binding, operation, key, path, encoded(body), 'queued'))
-        return key
+        return save_outbound(self.db, binding, operation, path, body)
+
+    def outbound_body(self, row):
+        return outbound_body(self.db, row)
 
     def deliver(self, operation, key):
         binding = self.binding if operation == 'receipt.ack' else self.producer_binding
-        row = self.db.execute('SELECT * FROM outbox WHERE binding=? AND operation=? AND request_id=?', (binding, operation, key)).fetchone()
+        row = self.db.execute('SELECT * FROM outbound_requests WHERE binding=? AND operation=? AND request_id=?', (binding, operation, key)).fetchone()
         if row['state'] == 'committed':
             return json.loads(row['result'])
         try:
-            result = self.client.request('POST', row['path'], json.loads(row['body']))
+            result = self.client.request('POST', row['path'], self.outbound_body(row))
         except ApiError as error:
             state = 'unknown' if error.value.get('retryable') or error.code in ('UNAUTHENTICATED', 'FORBIDDEN') else 'failed'
             with self.db:
-                self.db.execute('UPDATE outbox SET state=?,result=? WHERE binding=? AND operation=? AND request_id=?', (state, encoded(error.value), binding, operation, key))
+                self.db.execute('UPDATE outbound_requests SET state=?,result=? WHERE binding=? AND operation=? AND request_id=?', (state, encoded(error.value), binding, operation, key))
             raise
         except (OSError, ValueError):
             with self.db:
-                self.db.execute("UPDATE outbox SET state='unknown' WHERE binding=? AND operation=? AND request_id=?", (binding, operation, key))
+                self.db.execute("UPDATE outbound_requests SET state='unknown' WHERE binding=? AND operation=? AND request_id=?", (binding, operation, key))
             raise
         with self.db:
-            self.db.execute("UPDATE outbox SET state='committed',result=? WHERE binding=? AND operation=? AND request_id=?", (encoded(result), binding, operation, key))
+            self.db.execute("UPDATE outbound_requests SET state='committed',result=? WHERE binding=? AND operation=? AND request_id=?", (encoded(result), binding, operation, key))
         return result
 
     def recover(self):
-        rows = self.db.execute("SELECT * FROM outbox WHERE binding IN(?,?) AND state IN('queued','unknown') ORDER BY rowid", (self.binding, self.producer_binding)).fetchall()
+        rows = self.db.execute("SELECT * FROM outbound_requests WHERE binding IN(?,?) AND state IN('queued','unknown') ORDER BY rowid", (self.binding, self.producer_binding)).fetchall()
         for row in rows:
             try:
                 status = self.client.request('POST', '/v0/submissions/status', {'operation': row['operation'], 'request_id': row['request_id']})
                 if status['submission_state'] in ('committed', 'failed'):
                     with self.db:
-                        self.db.execute('UPDATE outbox SET state=?,result=? WHERE binding=? AND operation=? AND request_id=?', (status['submission_state'], encoded(status['result'] if status['submission_state'] == 'committed' else status['error']), row['binding'], row['operation'], row['request_id']))
+                        self.db.execute('UPDATE outbound_requests SET state=?,result=? WHERE binding=? AND operation=? AND request_id=?', (status['submission_state'], encoded(status['result'] if status['submission_state'] == 'committed' else status['error']), row['binding'], row['operation'], row['request_id']))
                     continue
             except ApiError as error:
                 if error.code != 'NOT_FOUND':
@@ -190,6 +190,7 @@ class Consumer:
         with self.db:
             for item, content in contents:
                 self.db.execute('INSERT OR IGNORE INTO inbox(binding,item_id,item_type,resource_id,resource_version,content) VALUES(?,?,?,?,?,?)', (self.binding, item['item_id'], item['item_type'], item['resource_id'], item['resource_version'], encoded(content)))
+                save_inbound(self.db, self.binding, item, content)
             for blob_id, (metadata, content) in blobs.items():
                 self.db.execute('INSERT OR IGNORE INTO blobs(blob_id,content_type,sha256,content) VALUES(?,?,?,?)', (blob_id, metadata['content_type'], metadata['sha256'], content))
             self.db.execute('INSERT INTO cursors(binding,cursor) VALUES(?,?) ON CONFLICT(binding) DO UPDATE SET cursor=excluded.cursor', (self.binding, page['next_cursor']))

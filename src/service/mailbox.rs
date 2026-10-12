@@ -140,6 +140,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         p: &Principal,
         row: &Row,
         error: Error,
+        policy_revision: Option<i64>,
     ) -> Result<Value> {
         if !matches!(
             error.code,
@@ -147,9 +148,15 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         ) {
             return Err(error);
         }
-        let (authority, args) = self.authority_guard(p);
+        let (mut authority, args) = self.authority_guard(p);
         let mut parameters = vec![error.code.into(), text(row, "submission_id")?.into()];
         parameters.extend(args);
+        if let Some(revision) = policy_revision {
+            authority.push_str(
+                " AND EXISTS(SELECT 1 FROM spaces WHERE space_id=? AND privacy_revision=?)",
+            );
+            parameters.extend([p.space_id.clone().into(), revision.into()]);
+        }
         self.db.batch(vec![Statement::new(format!("UPDATE submissions SET state='failed',error_code=? WHERE submission_id=? AND state IN('reserved','prepared') AND {authority}"),parameters)]).await?;
         self.current(p).await?;
         let rows = self
@@ -274,9 +281,15 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         let message_id = text(&row, "resource_id")?;
         let tid = text(&row, "thread_id")?;
-        let filtered = match self.filter_message(p, &row, input).await {
+        let policy = self.policy(&p.space_id).await?;
+        let policy_revision = policy.revision;
+        let filtered = match self.filter_message(p, &row, input, policy).await {
             Ok(filtered) => filtered,
-            Err(error) => return self.fail_submission(p, &row, error).await,
+            Err(error) => {
+                return self
+                    .fail_submission(p, &row, error, Some(policy_revision))
+                    .await;
+            }
         };
         let input = filtered.input;
         let body_key = format!("body_{message_id}_p{}", filtered.revision);
@@ -295,6 +308,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         "RESOURCE_LIMIT",
                         "Filtered message exceeds deployment limit.",
                     ),
+                    Some(policy_revision),
                 )
                 .await;
         }
