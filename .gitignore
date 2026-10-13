@@ -16,6 +16,9 @@
 /build/
 !/.dev.vars.example
 
+# Local runtime state written by a running instance
+/.waypost/
+
 __pycache__/
 *.pyc
 

@@ -1,7 +1,19 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 let csrf = '', spaces = [], actors = [], sid = '', tab = 'inbox', cursor = null, loadEpoch = 0, authEpoch = 0;
-const titles = {inbox: '信箱', agents: '助手', feed: '活动记录', messages: '全部消息', collections: '资料', privacy: '隐私规则', tokens: '连接凭据', submissions: '提交状态', receipts: '处理回执'};
+// Each tab names itself and says what it holds. One table, so the wording
+// cannot drift between the sidebar, the page header and the empty state.
+const sections = {
+  inbox:       {title: '信箱',     note: '助手发给你的报告和消息。'},
+  agents:      {title: '助手',     note: '接入一个助手，让它把进展送到这里。'},
+  collections: {title: '资料',     note: '资料保留来源和版本，按授权共享。'},
+  messages:    {title: '全部消息', note: '当前空间的所有消息，包括助手之间的交接。'},
+  feed:        {title: '活动记录', note: '投递、资料修订与回执。助手内部的行为，需要它主动报告。'},
+  privacy:     {title: '隐私规则', note: '按助手选择脱敏或阻止。本地规则不向外部模型发送原文。'},
+  tokens:      {title: '连接凭据', note: '每份连接的权限、有效期和撤销记录。'},
+  submissions: {title: '提交状态', note: '按请求 ID 找回原来的提交结果。'},
+  receipts:    {title: '处理回执', note: '客户端报告的收取与处理阶段。'},
+};
 function el(tag, text, cls) {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node;}
 function button(text, action, cls = 'secondary') {const node = el('button', text, cls); node.type = 'button'; node.addEventListener('click', () => busy(node, action)); return node;}
 function notice(message) {$('#notice').textContent = message; $('#notice').hidden = !message; $('#login-error').textContent = message; $('#detail-error').textContent = message; $('#detail-error').hidden = !message;}
@@ -31,12 +43,12 @@ async function loadSpaces() {
 }
 async function load(append = false) {
   const epoch = ++loadEpoch, spaceId = sid, currentTab = tab;
-  $('#title').textContent = titles[tab];
+  $('#title').textContent = sections[tab].title;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $('#add-agent').hidden = !['agents', 'inbox'].includes(tab) || !sid;
-  $('#subtitle').textContent = tab === 'inbox' ? '助手发给你的报告和消息。' : tab === 'agents' ? '接入一个助手，让它把进展送到这里。' : tab === 'collections' ? '资料保留来源和版本，按授权共享。' : tab === 'feed' ? '投递、资料修订与回执；助手内部行为需主动报告。' : tab === 'privacy' ? '按助手选择脱敏或阻止，本地规则不向外部模型发送原文。' : tab === 'messages' ? '当前空间的所有消息，包括助手之间的交接。' : '查看详细记录，管理和恢复连接。';
+  $('#subtitle').textContent = sections[tab].note;
   if (!append) {$('#content').replaceChildren(); cursor = null; $('#more').hidden = true;}
-  if (!sid) {$('#content').append(el('div', '还没有工作空间。新建一个空间开始接入 Agent。', 'empty')); return;}
+  if (!sid) {$('#content').append(el('div', '还没有空间。新建一个，开始接入助手。', 'empty')); return;}
   const loadedActors = await registry('actors', spaceId);
   if (epoch !== loadEpoch) return;
   actors = loadedActors;
@@ -91,14 +103,14 @@ function renderAgents() {
     const card = el('article', undefined, 'card agent');
     const avatar = el('div', actor.display_name.slice(0, 1), 'avatar'); card.append(avatar, el('h2', actor.display_name));
     card.append(el('span', actor.disabled ? '接入已暂停' : actor.kind === 'agent' ? '身份已注册' : actor.kind === 'user' ? '用户入口' : '客户端', `pill${actor.disabled ? ' disabled' : ''}`));
-    card.append(el('p', '收到真实来信，才能确认宿主已完成连接。', 'muted'));
+    card.append(el('p', '收到它的真实来信，才算接入成功。', 'fine'));
     const actions = el('div', undefined, 'row');
     const spaceId = sid, epoch = loadEpoch;
     actions.append(button('最近来信', async () => {
       const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'inbox', actor_id: actor.actor_id, limit: 20});
       if (spaceId !== sid || epoch !== loadEpoch) return;
       const list = el('section');
-      if (result.items.length) renderMessages(result.items, list); else list.append(el('p', '尚未收到它发给你的消息。请在助手的宿主中配置连接，再发送第一封信。'));
+      if (result.items.length) renderMessages(result.items, list); else list.append(el('p', '还没有收到它的消息。在助手的运行环境里填好连接，再请它发第一封信。'));
       openDetail(`${actor.display_name} · 最近来信`, list);
     }));
     if (!actor.disabled && actor.kind === 'agent') actions.append(button('连接与权限', () => manageConnections(actor)));
@@ -156,7 +168,7 @@ function renderTable(items) {
         }));
         if (!history.revisions.length) body.append(el('p', 'revision 0 · 空集合'));
         if (!$('#detail').open) $('#detail').showModal();
-      } else showDetail(titles[tab], item);
+      } else showDetail(sections[tab].title, item);
     }));
     if (tab === 'tokens' && !item.revoked_at) action.append(button('撤销', async () => {await api(`/admin/v0/spaces/${sid}/tokens/${item.token_id}`, 'DELETE', {}); await load();}));
     row.append(action); table.append(row);
@@ -166,22 +178,22 @@ function renderTable(items) {
 async function renderPrivacy() {
   const config = await api(`/admin/v0/spaces/${sid}/privacy`);
   const form = el('form', undefined, 'card privacy-form');
-  form.append(el('h2', `通信隐私 · revision ${config.revision}`), el('p', '规则针对选定 Agent 的发信或收信执行；不改写已发布历史。来源记忆按原授权保存。'));
+  form.append(el('h2', `通信隐私 · revision ${config.revision}`), el('p', '规则对选定助手的发信或收信执行，不改写已发布的历史。来源资料按原授权保存。'));
   const checks = el('div', undefined, 'checks');
   function check(text, checked) {const label = el('label'), input = el('input'); input.type = 'checkbox'; input.checked = checked; label.append(input, document.createTextNode(text)); checks.append(label); return input;}
-  const enabled = check('启用隐私过滤', config.enabled), all = check('所有 Agent', config.all_agents), binary = check('允许无法检查的二进制附件', config.allow_uninspected_attachments);
+  const enabled = check('启用隐私过滤', config.enabled), all = check('所有助手', config.all_agents), binary = check('允许无法检查的二进制附件', config.allow_uninspected_attachments);
   form.append(checks);
   const modeLabel = el('label', '发现敏感内容时'), mode = el('select');
   for (const [value, text] of [['redact', '自动脱敏后发布'], ['block', '阻止发布']]) {const option = el('option', text); option.value = value; mode.append(option);} mode.value = config.mode; modeLabel.append(mode); form.append(modeLabel);
   const targets = el('div', undefined, 'checks'); const targetInputs = [];
-  form.append(el('h2', '需要保护的 Agent'));
+  form.append(el('h2', '需要保护的助手'));
   for (const actor of actors.filter(a => a.kind === 'agent')) {const label = el('label', actor.display_name), input = el('input'); input.type = 'checkbox'; input.checked = config.actor_ids.includes(actor.actor_id); label.prepend(input); targets.append(label); targetInputs.push([actor.actor_id, input]);} form.append(targets);
   const detectors = el('div', undefined, 'checks'), detectorInputs = [];
   for (const [kind, text] of [['credential', '服务凭据 / API key'], ['email', '邮箱'], ['phone', '手机号'], ['identity_number', '18 位身份号码']]) {const label = el('label', text), input = el('input'); input.type = 'checkbox'; input.checked = config.rules.some(r => r.kind === kind); label.prepend(input); detectors.append(label); detectorInputs.push([kind, input]);}
   form.append(el('h2', '本地检测规则'), detectors);
   const customInputs = [];
   for (const [kind, text] of [['literal', '敏感词：每行一个'], ['regex', '自定义正则：每行一个'], ['metadata_key', '敏感 metadata 字段名：每行一个']]) {const label = el('label', text), input = el('textarea'); input.value = config.rules.filter(r => r.kind === kind).map(r => r.value).join('\n'); label.append(input); form.append(label); customInputs.push([kind, input]);}
-  form.append(el('p', '规则只检查 UTF-8 文本，无法识别所有自然语言隐私，也不检查图片、PDF 或二进制内容。未允许的附件类型会阻止消息发布。', 'muted'));
+  form.append(el('p', '规则只检查 UTF-8 文本，认不出所有自然语言里的隐私，也不检查图片、PDF 和二进制内容。未允许的附件类型会阻止消息发布。', 'fine'));
   const save = el('button', '保存策略'); save.type = 'submit'; form.append(save);
   form.addEventListener('submit', event => {event.preventDefault(); busy(save, async () => {
     const rules = detectorInputs.filter(([, i]) => i.checked).map(([kind]) => ({kind}));
@@ -236,7 +248,7 @@ async function issueConnection(task) {
   }
   const info = {mcp_url: `${location.origin}/mcp`, headers: {Authorization: `Bearer ${credential.token}`}, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, ...(task.collection ? {collection_id: task.collection.collection_id} : {})};
   const body = el('div');
-  body.append(el('p', '将连接信息保存到助手宿主的私密 MCP 配置。原始凭据只展示一次。'), el('pre', JSON.stringify(info, null, 2)), el('h3', '这份连接允许'), el('p', task.scopes.map(s => scopeNames[s] || s).join('；')), el('p', task.expires_at ? `到期：${date(task.expires_at)}` : '持续有效，可在连接管理中随时撤销。'), el('p', '接好后，请助手向默认收件人发送第一封信。回到信箱，确认消息已收到。'));
+  body.append(el('p', '把这份连接信息存进助手的运行环境。原始凭据只展示一次。'), el('pre', JSON.stringify(info, null, 2)), el('h3', '这份连接允许'), el('p', task.scopes.map(s => scopeNames[s] || s).join('；')), el('p', task.expires_at ? `到期：${date(task.expires_at)}` : '持续有效，可在连接管理中随时撤销。'), el('p', '接好后，请助手向默认收件人发送第一封信。回到信箱，确认消息已收到。'));
   openDetail('连接信息', body); sid = task.sid; finishCreation(); await loadSpaces();
 }
 async function createAgent(name) {
@@ -254,7 +266,7 @@ async function manageConnections(actor) {
   const [tokens, consumers, collections] = await Promise.all([api(root + '/inspect', 'POST', {kind: 'tokens', actor_id: actor.actor_id, limit: 100}), registry('consumers', spaceId), inspectItems('collections', spaceId)]);
   if (spaceId !== sid || epoch !== loadEpoch) return;
   const body = el('div');
-  body.append(el('p', '每份有效连接提供各自的权限。签发新连接后，请更新宿主配置；缩小权限时，也要撤销旧连接。'));
+  body.append(el('p', '每份连接有各自的权限。签发新的，请更新助手的配置；缩小权限时，也撤销旧的。'));
   for (const token of tokens.items) {
     const expired = token.expires_at && new Date(token.expires_at).getTime() <= Date.now();
     const row = el('div', undefined, 'card');
@@ -315,5 +327,5 @@ $('#owner-credential').addEventListener('click', () => busy($('#owner-credential
   const current = await api(path);
   if (current.version && !confirm('重新签发会使旧用户凭据和登录会话失效。继续签发？')) return;
   const result = await api(path, 'POST', {expected_version: current.version});
-  showDetail('用户登录凭据 · 只展示一次', {dashboard_url: `${location.origin}/dashboard`, space_id: sid, credential: result.credential, note: '这份凭据只管理当前用户空间。通过私密渠道交给该用户；Agent 使用另外签发的连接凭据。'});
+  showDetail('用户登录凭据 · 只展示一次', {dashboard_url: `${location.origin}/dashboard`, space_id: sid, credential: result.credential, note: '这份凭据只管理当前用户空间。通过私密渠道交给该用户；助手使用另外签发的连接凭据。'});
 }));
