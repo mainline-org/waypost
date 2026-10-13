@@ -6,16 +6,21 @@ import { randomUUID } from 'node:crypto';
 const origin=process.env.WAYPOST_URL||'http://127.0.0.1:8787',admin=process.env.WAYPOST_ADMIN_SECRET;
 if(!admin)throw new Error('Provide WAYPOST_ADMIN_SECRET privately.');
 const wait=async predicate=>{for(let i=0;i<500;i++){if(predicate())return;await new Promise(r=>setTimeout(r,20));}throw new Error('Expected Dashboard state was not reached');};
-const windows=[];
+const windows=[]; let pendingRequests=0;
 function page(hash=''){
  const dom=new JSDOM(readFileSync(new URL('../../dashboard/index.html',import.meta.url),'utf8'),{url:origin+'/dashboard'+hash,runScripts:'outside-only'}),w=dom.window;windows.push(w);let cookie='';
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
  w.confirm=()=>true;
  w.fetch=async(path,options={})=>{
+   pendingRequests++;
+   try {
    const headers={...options.headers,'user-agent':'Waypost/0.1.0',...(cookie?{cookie}: {})};
    const response=await fetch(new URL(path,origin),{...options,headers});
-   const next=response.headers.get('set-cookie');if(next)cookie=next.split(';')[0];return response;
+   const next=response.headers.get('set-cookie');if(next)cookie=next.split(';')[0];
+   const value=await response.json();
+   return {ok:response.ok,status:response.status,json:async()=>value};
+   } finally {pendingRequests--;}
  };
  w.eval(readFileSync(new URL('../../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
  w.eval(readFileSync(new URL('../../dashboard/app.js',import.meta.url),'utf8'));
@@ -58,4 +63,9 @@ try{
  p.querySelector('#close-detail').click();assert(!p.querySelector('#detail-body').textContent.includes(loginCredential));
  p.querySelector('#logout').click();await wait(()=>p.querySelector('#app').hidden);
  console.log(JSON.stringify({result:'passed',runtime:origin,request_to_invite:true,private_invitation_removed_from_history:true,scoped_personal_login:true,primary_configuration:true,connected_default_recipient:true,credential_clearing:true}));
-}finally{windows.forEach(w=>w.close());}
+}finally{
+ // A logout can invalidate earlier list reads. Let their UI handlers settle
+ // before destroying the simulated documents, as a browser's page lifecycle does.
+ do {await wait(()=>pendingRequests===0);await new Promise(r=>setTimeout(r,20));} while(pendingRequests);
+ windows.forEach(w=>w.close());
+}

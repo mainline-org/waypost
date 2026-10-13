@@ -1,6 +1,7 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>几个助手做事，Muse 给你一份完整报告 — Waypost</title><meta name="description" content="Today、Instinct、Grok Bot 各自交付，由 Muse 整理出已完成的事和等你决定的事。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
-<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">助手协作 · 配置示例</p><h1>几个助手做事，Muse 给你一份完整报告</h1><p class="case-lede">Today、Instinct、Grok Bot 各自交付，由 Muse 整理出已完成的事和等你决定的事。</p><div class="case-flow">其他助手 → Waypost → Muse → 你</div><article class="case-body"><p>Instinct 订餐厅，Grok Bot 查机票，Today 整理行程笔记。你希望有一位主助手掌握这些结果，再告诉你整体进展。</p>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>几个助手做事，主助手给你一份完整报告 — Waypost</title><meta name="description" content="Today、Instinct、Grok Bot 各自交付，由你主要对话的助手整理出已完成的事和等你决定的事。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="https://waypost-production.christopherwuy.workers.dev/dashboard">打开信箱</a></div></header>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">助手协作 · 配置示例</p><h1>几个助手做事，主助手给你一份完整报告</h1><p class="case-lede">Today、Instinct、Grok Bot 各自交付，由你主要对话的助手整理出已完成的事和等你决定的事。</p><div class="case-flow">接入助手 → Waypost → 主助手 → 你</div><article class="case-body"><p>Instinct 订餐厅，Grok Bot 查机票，Today 整理行程笔记。你希望有一位主助手掌握这些结果，再告诉你整体进展。</p>
+<p>主助手是你主要对话的助手。下面以 Muse 为例，也可以换成你现在使用的助手。</p>
 <h2>让结果经过同一个信箱</h2>
 <pre><code class="language-text">Today / Instinct / Grok Bot → Waypost → Muse → 你
 </code></pre>
@@ -12,11 +13,11 @@
 </blockquote>
 <h2>先接入，再明确授权</h2>
 <ol>
-<li>接入 Muse，为它开启收信、回执和发信能力。</li>
-<li>接入其他助手，签发允许向 Muse 发信的连接，发信时明确指定 Muse 为收件人。</li>
+<li>接入 Muse，在「助手」页选择「选为主助手」，再签发收信、回执和发信能力。</li>
+<li>接入其他助手，默认收件人选择主助手，保存各自只有发信能力的连接。</li>
 <li>在各自的运行环境里配置连接，请 Muse 收取、汇总，再向你汇报。</li>
 </ol>
-<p>新连接默认只向你发信。新增向 Muse 发信的权限，不会自动改变默认收件人；签发新连接也不会撤销旧连接。</p>
+<p>选定角色不自动扩大权限。未选主助手时，新连接默认向你发信。已有连接保留原来的目标与权限；签发新连接不会撤销旧连接。</p>
 <h2>结果由你掌握</h2>
 <p>Muse 发给你的报告出现在个人信箱，助手之间的交接可以在「管理 → 全部消息」核对。你可以撤销连接，停止后续访问与发布。</p>
 <p>Muse 何时执行、何时收信，由它的运行环境安排。Waypost 的处理回执只说明客户端报告的阶段，不代表外部预约或购买已经成功。</p>

@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cloudflare 生产运行 — Waypost RFC</title><meta name="description" content="Cloudflare 生产运行。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/deployment/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#当前入口">当前入口</a><a href="#配置与发布">配置与发布</a><a href="#运行边界">运行边界</a><a href="#上线验收">上线验收</a><a href="#观察与恢复">观察与恢复</a><a href="#首次发布记录">首次发布记录</a><a href="#加密与用户隔离版本升级">加密与用户隔离版本升级</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>Cloudflare 生产运行</h1><div class="rfc-source-links"><a href="/rfc/source/production.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><p>Waypost 的 Cloudflare 部署使用独立 Worker、D1 和私有 R2。运行参数与本机配置分开；账户配置和管理凭据不进入公开仓库。</p>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cloudflare 生产运行 — Waypost RFC</title><meta name="description" content="Cloudflare 生产运行。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/deployment/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#当前入口">当前入口</a><a href="#配置与发布">配置与发布</a><a href="#运行边界">运行边界</a><a href="#上线验收">上线验收</a><a href="#观察与恢复">观察与恢复</a><a href="#首次发布记录">首次发布记录</a><a href="#加密与用户隔离版本升级">加密与用户隔离版本升级</a><a href="#邀请与主助手上线2026-10-13">邀请与主助手上线（2026-10-13）</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>Cloudflare 生产运行</h1><div class="rfc-source-links"><a href="/rfc/source/production.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><p>Waypost 的 Cloudflare 部署使用独立 Worker、D1 和私有 R2。运行参数与本机配置分开；账户配置和管理凭据不进入公开仓库。</p>
 <h2 id="当前入口">当前入口</h2>
 <ul>
 <li>Dashboard：<a href="https://waypost-production.christopherwuy.workers.dev/dashboard">https://waypost-production.christopherwuy.workers.dev/dashboard</a></li>
@@ -6,7 +6,7 @@
 <li>存活探测：<code>GET /health</code></li>
 <li>存储就绪：<code>GET /ready</code>，需要管理员 bearer</li>
 </ul>
-<p>此实例由管理员创建空间与签发 Agent 凭据，没有匿名写入或公开注册。Agent 使用自己的限权凭据，不能使用管理凭据作为普通连接。</p>
+<p>新用户通过 <a href="https://waypost-production.christopherwuy.workers.dev/dashboard#request-access">申请邀请</a> 留下联系方式。运行者审核后私密送达一次性邀请，领取后获得独立空间和个人登录凭据。助手使用自己的限权连接，不能使用管理凭据作为普通连接。</p>
 <h2 id="配置与发布">配置与发布</h2>
 <p>先准备 Rust/Wasm、<code>worker-build 0.8.7</code> 和 Wrangler 4.111.0 或更新版本。登录后创建自己的独立资源：</p>
 <pre><code class="language-bash">wrangler login
@@ -34,7 +34,7 @@ wrangler deploy --config wrangler.production.toml --secrets-file .env.production
 </thead>
 <tbody>
 <tr>
-<td>POST <code>/admin/session</code></td>
+<td>登录、申请与领取：POST <code>/admin/session</code>、<code>/admin/access-request</code>、<code>/admin/invitation</code></td>
 <td style="text-align:right">每 IP 每 60 秒 10 次</td>
 </tr>
 <tr>
@@ -47,7 +47,7 @@ wrangler deploy --config wrangler.production.toml --secrets-file .env.production
 </tr>
 </tbody>
 </table></div><p>超限返回 <code>429 RATE_LIMITED</code> 和 <code>Retry-After</code>。计数使用 IP 摘要，服务不在计数键中保存原 IP。Cloudflare 的计数按位置执行且为近似限制，不能视为全局严格配额或账单上限。<a href="https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/">Rate Limiting API</a></p>
-<p><code>/health</code> 表示请求处理可用；<code>/ready</code> 同时验证六个迁移和 R2 读取连接，且返回明确的 environment。实际上传、封存及下载还应通过完整示例检查。</p>
+<p><code>/health</code> 表示请求处理可用；<code>/ready</code> 同时验证当前九个迁移和 R2 读取连接，且返回明确的 environment。实际上传、封存及下载还应通过完整示例检查。</p>
 <p>请求大小、Blob、附件、集合和分页上限仍采用 <a href="/rfc/hosting/#cloudflare-%E5%AE%B9%E9%87%8F%E4%B8%8E%E8%B4%B9%E7%94%A8">Worker profile</a>。服务通过 <code>waypost_describe</code> 返回实际值。应用限速不替代账户日用量、CPU、数据库及存储计划限制；部署不会自动升级账户计划。</p>
 <h2 id="上线验收">上线验收</h2>
 <p>使用私密凭据文件运行：</p>
@@ -73,7 +73,12 @@ wrangler d1 time-travel info waypost-production --config wrangler.production.tom
 <p>2026-10-12 首次发布，Worker Version：<code>79117c74-ec90-4b41-8864-3b397e1a3d28</code>，运行时代码提交：<code>177eac4</code>。独立 APAC D1 的六个迁移已应用，R2 Standard bucket 的公开 URL 已确认关闭。发布过程没有启用新付费计划。</p>
 <p>生产验收结果以 <a href="/rfc/validation/">验证记录</a> 为准。后续发布会产生新版本，以上 ID 是首次交付的追溯记录。</p>
 <h2 id="加密与用户隔离版本升级">加密与用户隔离版本升级</h2>
-<p>此分支新增服务端 HPKE 内容加密、用户空间管理凭据和迁移 <code>0007</code> / <code>0008</code>。上文首次部署的六迁移版本是历史记录；本次安全改进尚未发布到该生产入口。</p>
-<p>更新前备份 D1/R2 与密钥，配置私密 <code>WAYPOST_ENCRYPTION_KEYS</code>（推荐同时配置独立 <code>WAYPOST_CURSOR_SECRET</code>），应用全部八个迁移，再按 <a href="/rfc/security/">安全说明</a> 迁移旧内容。生产 Worker 缺少加密 keyring 会拒绝请求。若过渡期间临时允许旧明文读取，完成迁移后关闭 <code>ALLOW_LEGACY_PLAINTEXT</code> 并清理旧对象。</p>
+<p>服务端 HPKE 内容加密、用户空间管理凭据和迁移 <code>0007</code> / <code>0008</code> 已在生产启用。本次接入工作开始时，线上就绪检查已确认八迁移版本；上文六迁移版本保留为首次交付记录。</p>
+<p>从旧版本升级前备份 D1/R2 与密钥，配置私密 <code>WAYPOST_ENCRYPTION_KEYS</code>（推荐同时配置独立 <code>WAYPOST_CURSOR_SECRET</code>），应用全部迁移，再按 <a href="/rfc/security/">安全说明</a> 迁移旧内容。生产 Worker 缺少加密 keyring 会拒绝请求。若过渡期间临时允许旧明文读取，完成迁移后关闭 <code>ALLOW_LEGACY_PLAINTEXT</code> 并清理旧对象。</p>
 <p>密文与字段迁移后，旧明文版本不能直接读取新数据。回滚应匹配代码、数据库、对象和密钥的备份版本；不要直接把旧 Worker 覆盖到已经迁移的存储上。此次更新改变游标格式，客户端需重新读取并按 item ID 去重。</p>
+<h2 id="邀请与主助手上线2026-10-13">邀请与主助手上线（2026-10-13）</h2>
+<p>代码已通过 PR <a href="https://github.com/mainline-org/waypost/pull/6">#6</a> 合并到 main，提交 <code>9d989ff</code>。Worker Version：<code>35877fca-1f73-4eb8-8cfa-7085c70728af</code>，就绪检查返回 <code>schema_revision: 9</code>。</p>
+<p>上线前保存了完整 D1 导出、恢复点、旧 Worker 版本与私密配置。迁移 <code>0009</code> 添加主助手、连接默认收件人、邀请和申请字段，不改写 R2；发布保留现有加密 keyring。D1 与配置备份不替代完整 R2 备份。</p>
+<p>真实 HTTPS 入口通过健康、安全头、D1/R2、Origin、CSRF 与退出失效检查。标准 MCP 客户端完成接入助手投递、同请求恢复、主助手可靠保存后确认、向用户汇报与 processed；只有发信能力的连接被拒绝读取信箱。真实 HTTP + DOM 完成申请、审批、一次性领取、个人空间、主助手连接预设与默认投递验证。</p>
+<p>验收使用独立示例空间模拟助手角色，没有调用真实 Muse 产品或执行餐厅订单。当前邀请通过私密渠道手动送达，不自动发送邮件。</p>
 </div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a>RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>
