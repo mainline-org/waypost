@@ -1,0 +1,70 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>运行与部署 — Waypost RFC</title><meta name="description" content="运行与部署。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/hosting/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#原生-rust--sqlite">原生 Rust / SQLite</a><a href="#docker">Docker</a><a href="#cloudflare-本机-d1r2">Cloudflare 本机 D1/R2</a><a href="#cloudflare-远程部署">Cloudflare 远程部署</a><a href="#cloudflare-容量与费用">Cloudflare 容量与费用</a><a href="#当前协议边界">当前协议边界</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>运行与部署</h1><div class="rfc-source-links"><a href="/rfc/source/deployment.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><h2 id="原生-rust--sqlite">原生 Rust / SQLite</h2>
+<pre><code class="language-bash">cargo run -- init --data ./var
+cargo run -- serve --data ./var
+</code></pre>
+<p>默认监听 <code>127.0.0.1:8787</code>。管理凭据在 <code>var/admin-secret</code>，Unix 创建权限为 <code>0600</code>；<code>WAYPOST_ADMIN_SECRET</code> 可覆盖。原生 CLI 默认为内容生成独立的 <code>encryption-keys</code>。网页使用 HttpOnly/SameSite 管理会话，Actor 连接使用单独的限权 bearer。<code>WAYPOST_PUBLIC_ORIGIN</code> 设置页面 Origin 和工具返回的上传/下载地址。跨站浏览器调用不提供 CORS；支持 HTTP bearer 的助手后端可以连接 MCP。</p>
+<p>加密根密钥必须单独安全备份。备份需同时保存 <code>metadata.sqlite</code> 与整个 <code>objects/</code> 目录（含其 <code>objects.sqlite</code> 索引）。停止服务后复制可获得一致的原生备份。仅恢复 metadata 或仅导出摘要不构成完整恢复。<code>var/</code>、本地凭据与运行资料均被 Git 忽略。</p>
+<h2 id="docker">Docker</h2>
+<pre><code class="language-bash">docker compose up --build -d
+docker compose exec waypost cat /data/admin-secret
+</code></pre>
+<p>打开 <code>http://127.0.0.1:8787/dashboard</code>。命名 volume 持久化状态与资料；容器运行用户为 UID 10001，Compose 仅发布本机端口。远程入口应设置实际 <code>WAYPOST_PUBLIC_ORIGIN</code>，由部署方提供 HTTPS。容器配置与原生服务使用同一套迁移。</p>
+<h2 id="cloudflare-本机-d1r2">Cloudflare 本机 D1/R2</h2>
+<p>需要 Rust/Wasm target、<code>worker-build 0.8.7</code> 和 Wrangler。</p>
+<pre><code class="language-bash">rustup target add wasm32-unknown-unknown
+cargo install worker-build --version 0.8.7 --locked
+cp .dev.vars.example .dev.vars
+# 为 .dev.vars 设置自己的至少 32 字节管理凭据
+wrangler d1 migrations apply waypost --local
+wrangler dev --local --port 8791
+</code></pre>
+<p>使用 <code>http://127.0.0.1:8791</code>，与配置的 Origin 保持一致。此模式只创建本机资源，不需要远程数据库或 bucket。已用本机 Workerd、D1/R2 和官方 MCP SDK 跑通完整例子。</p>
+<h2 id="cloudflare-远程部署">Cloudflare 远程部署</h2>
+<p>生产部署使用独立的 <code>wrangler.production.toml</code>，模板为 <a href="https://github.com/mainline-org/waypost/blob/main/wrangler.production.example.toml">wrangler.production.example.toml</a>。账户、D1/R2、真实 HTTPS Origin、管理密钥和限速绑定须同时配置；真实配置与凭据被 Git 忽略。</p>
+<p>发布、线上验收、观察与恢复流程见 <a href="/rfc/deployment/">Cloudflare 生产运行</a>。当前部署入口和首次版本记录也在该文档中。</p>
+<h2 id="cloudflare-容量与费用">Cloudflare 容量与费用</h2>
+<p>D1 batch 中每条语句仍受独立限制，Free invocation 最多 50 个 D1 查询、每条最多 100 个绑定参数。这里使用较保守的请求/集合上限，<code>describe</code> 返回实际配置。<a href="https://developers.cloudflare.com/d1/platform/limits/">D1 限制</a>；CPU 和实际用量仍受账户计划限制。<a href="https://developers.cloudflare.com/workers/platform/limits/">Workers 限制</a></p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>上限</th>
+<th style="text-align:right">Native</th>
+<th style="text-align:right">Worker profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON 请求</td>
+<td style="text-align:right">64 KiB</td>
+<td style="text-align:right">16 KiB</td>
+</tr>
+<tr>
+<td>单个 Blob</td>
+<td style="text-align:right">8 MiB</td>
+<td style="text-align:right">256 KiB</td>
+</tr>
+<tr>
+<td>消息附件</td>
+<td style="text-align:right">16</td>
+<td style="text-align:right">4</td>
+</tr>
+<tr>
+<td>Inline / manifest 记忆变更</td>
+<td style="text-align:right">500 / 10,000</td>
+<td style="text-align:right">8 / 8</td>
+</tr>
+<tr>
+<td>当前集合 active + tombstone</td>
+<td style="text-align:right">10,000</td>
+<td style="text-align:right">32</td>
+</tr>
+<tr>
+<td>页大小</td>
+<td style="text-align:right">100</td>
+<td style="text-align:right">20</td>
+</tr>
+</tbody>
+</table></div><p>加密 Worker 在 256 KiB 上限内缓冲、验证和加解密对象；R2 保存认证密文并使用 create-only 条件。未配置加密的本机开发模式仍可使用 FixedLengthStream。获取和封存必须核对实际对象 metadata。R2 有免费额度，超额收费及适用存储类别以账户配置和官方定价为准。<a href="https://developers.cloudflare.com/r2/pricing/">R2 定价</a></p>
+<h2 id="当前协议边界">当前协议边界</h2>
+<p>服务提供持久信箱、独立 Consumer 回执、Blob、来源记忆和操作检查。它不执行模型、私人聊天抓取、语义合并或后台任务。<code>oauth</code>、<code>webhook_events</code>、<code>server_export</code> 为 false；客户端导出完整 SQLite/文件包可用。</p>
+<p>v0.1 不自动裁剪已发布历史。Tombstone 是逻辑删除，不代表历史字节或其他客户端副本已被物理清除。可通过 <code>WAYPOST_CURSOR_SECRET</code> 独立设置游标签名密钥。内容使用单独的 <code>WAYPOST_ENCRYPTION_KEYS</code>，旧数据迁移与用户隔离见 <a href="/rfc/security/">安全说明</a>；Actor 凭据按同权限轮换保持游标与 Actor 幂等有效。</p>
+</div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a>RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

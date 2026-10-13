@@ -8,6 +8,7 @@ use crate::{
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use wasm_bindgen::JsValue;
 use worker::{
@@ -45,7 +46,25 @@ impl D1Store {
         self.session
             .prepare(statement.sql)
             .bind(&parameters)
-            .map_err(|_| Error::storage())
+            .map_err(|_| Error::internal("D1 statement bindings"))
+    }
+}
+fn d1_error(error: worker::Error) -> Error {
+    let message = error.to_string().to_ascii_lowercase();
+    if [
+        "constraint",
+        "syntax error",
+        "no such table",
+        "no such column",
+        "datatype mismatch",
+        "bind",
+    ]
+    .iter()
+    .any(|label| message.contains(label))
+    {
+        Error::internal("D1 statement or schema")
+    } else {
+        Error::storage()
     }
 }
 fn result_rows(result: D1Result) -> Result<Vec<Row>> {
@@ -54,7 +73,7 @@ fn result_rows(result: D1Result) -> Result<Vec<Row>> {
     }
     let rows = result
         .results::<BTreeMap<String, Value>>()
-        .map_err(|_| Error::storage())?;
+        .map_err(|_| Error::internal("D1 row decoding"))?;
     rows.into_iter()
         .map(|r| {
             r.into_iter()
@@ -83,12 +102,7 @@ fn result_rows(result: D1Result) -> Result<Vec<Row>> {
 }
 impl Database for D1Store {
     async fn query(&self, statement: Statement) -> Result<Vec<Row>> {
-        result_rows(
-            self.prepare(statement)?
-                .all()
-                .await
-                .map_err(|_| Error::storage())?,
-        )
+        result_rows(self.prepare(statement)?.all().await.map_err(d1_error)?)
     }
     async fn batch(&self, statements: Vec<Statement>) -> Result<Vec<Vec<Row>>> {
         let statements = statements
@@ -98,7 +112,7 @@ impl Database for D1Store {
         self.session
             .batch(statements)
             .await
-            .map_err(|_| Error::storage())?
+            .map_err(d1_error)?
             .into_iter()
             .map(result_rows)
             .collect()
@@ -223,12 +237,7 @@ impl App<D1Store, R2Store> {
         let p = self.authenticate(request).await?;
         p.require("blob.write")?;
         let row = self.upload(&p, id).await?;
-        if text(&row, "state")? == "sealed" {
-            return Err(Error::new("UPLOAD_SEALED", "Upload is sealed."));
-        }
-        if integer(&row, "expires_at")? <= self.clock.now_ms() {
-            return Err(Error::new("UPLOAD_EXPIRED", "Upload expired."));
-        }
+        crate::storage::rows::Upload::decode(&row)?.writable(self.clock.now_ms())?;
         let size = integer(&row, "size_bytes")? as u64;
         let content_type = text(&row, "content_type")?;
         if size > self.limits.max_blob_bytes {
@@ -268,12 +277,7 @@ impl App<D1Store, R2Store> {
             .await?;
         self.current(&p).await?;
         let after = self.upload(&p, id).await?;
-        if text(&after, "state")? == "sealed" {
-            return Err(Error::new("UPLOAD_SEALED", "Upload is sealed."));
-        }
-        if integer(&after, "expires_at")? <= self.clock.now_ms() {
-            return Err(Error::new("UPLOAD_EXPIRED", "Upload expired."));
-        }
+        crate::storage::rows::Upload::decode(&after)?.writable(self.clock.now_ms())?;
         Ok(json!({"upload_id":id,"already_uploaded":existing.is_some()}))
     }
     async fn streaming_download(&self, request: &Request, id: &str) -> Result<worker::Response> {
@@ -295,10 +299,7 @@ impl App<D1Store, R2Store> {
             .map_err(|_| Error::storage())?
             .ok_or_else(Error::storage)?;
         let info = object_info(&object)?;
-        if info.sha256 != blob(&row, "sha256")? || info.size != integer(&row, "size_bytes")? as u64
-        {
-            return Err(Error::storage());
-        }
+        crate::storage::rows::verify_object(&row, &info)?;
         self.current(&p).await?;
         let mut response = worker::Response::from_body(
             object
@@ -335,19 +336,93 @@ fn convert(response: Response) -> worker::Result<worker::Response> {
 }
 #[event(fetch)]
 pub async fn fetch(
-    mut raw: worker::Request,
+    raw: worker::Request,
     env: Env,
     _ctx: Context,
 ) -> worker::Result<worker::Response> {
-    let database = env.d1("DB")?;
-    let session = database.with_session(Some("first-primary"))?;
+    let https = raw.url()?.scheme() == "https";
+    let mut response = match handle_fetch(raw, env).await {
+        Ok(response) => response,
+        Err(_) => error_response(Error::internal("worker request boundary"))?,
+    };
+    for (name, value) in [
+        ("cache-control", "no-store"),
+        ("x-content-type-options", "nosniff"),
+        ("referrer-policy", "no-referrer"),
+    ] {
+        response.headers_mut().set(name, value)?;
+    }
+    if https {
+        response
+            .headers_mut()
+            .set("strict-transport-security", "max-age=31536000")?;
+    }
+    Ok(response)
+}
+
+async fn handle_fetch(mut raw: worker::Request, env: Env) -> worker::Result<worker::Response> {
+    let production = env
+        .var("DEPLOYMENT_ENV")
+        .is_ok_and(|value| value.to_string() == "production");
     let config = Config {
         admin_secret: env.secret("WAYPOST_ADMIN_SECRET")?.to_string(),
         public_origin: env.var("PUBLIC_ORIGIN")?.to_string(),
     };
-    if config.admin_secret.len() < 32 {
-        return error_response(Error::storage());
+    let origin = worker::Url::parse(&config.public_origin)
+        .map_err(|_| worker::Error::from("Invalid public origin"))?;
+    if config.admin_secret.len() < 32
+        || !matches!(origin.scheme(), "http" | "https")
+        || origin.origin().ascii_serialization() != config.public_origin
+        || (production && origin.scheme() != "https")
+    {
+        return error_response(Error::internal("worker configuration"));
     }
+    if raw
+        .headers()
+        .get("origin")?
+        .is_some_and(|value| value != config.public_origin)
+    {
+        return error_response(Error::forbidden());
+    }
+    // Production must not silently omit abuse controls when a binding is missing.
+    let admin_limiter = env.rate_limiter("ADMIN_RATE_LIMITER");
+    let api_limiter = env.rate_limiter("API_RATE_LIMITER");
+    if production && (admin_limiter.is_err() || api_limiter.is_err()) {
+        return error_response(Error::internal("worker configuration"));
+    }
+    let path = raw.path();
+    let route = crate::http::classify(raw.method().as_ref(), &path);
+    let limiter = if matches!(route, crate::http::Route::AdminSession)
+        && raw.method() == worker::Method::Post
+    {
+        admin_limiter.ok()
+    } else if matches!(
+        route,
+        crate::http::Route::PublicAsset | crate::http::Route::Health
+    ) {
+        None
+    } else {
+        api_limiter.ok()
+    };
+    if let Some(limiter) = limiter {
+        let ip = raw
+            .headers()
+            .get("cf-connecting-ip")?
+            .unwrap_or_else(|| "local".into());
+        let outcome = limiter
+            .limit(format!("ip:{}", hex::encode(Sha256::digest(ip.as_bytes()))))
+            .await?;
+        if !outcome.success {
+            let mut response = error_response(Error::new(
+                "RATE_LIMITED",
+                "Request rate limit exceeded; retry later.",
+            ))?;
+            response.headers_mut().set("retry-after", "60")?;
+            return Ok(response);
+        }
+    }
+    let database = env.d1("DB")?;
+    let session = database.with_session(Some("first-primary"))?;
     // Conservative Free-tier profile. Public describe reports these exact limits.
     let limits = Limits {
         max_json_bytes: 16384,
@@ -366,45 +441,79 @@ pub async fn fetch(
         config,
     )
     .with_limits(limits);
+    let app = if let Ok(secret) = env.secret("WAYPOST_CURSOR_SECRET") {
+        match app.with_cursor_secret(&secret.to_string()) {
+            Ok(app) => app,
+            Err(_) => return error_response(Error::internal("worker cursor key configuration")),
+        }
+    } else {
+        app
+    };
+    let app = if let Ok(keys) = env.secret("WAYPOST_ENCRYPTION_KEYS") {
+        let legacy = env
+            .var("ALLOW_LEGACY_PLAINTEXT")
+            .is_ok_and(|v| v.to_string() == "1");
+        match app.with_encryption_keys(&keys.to_string(), legacy) {
+            Ok(app) => app,
+            Err(_) => return error_response(Error::internal("worker encryption configuration")),
+        }
+    } else if production {
+        return error_response(Error::internal("production encryption keyring missing"));
+    } else {
+        app
+    };
     let mut request = Request {
         method: raw.method().to_string(),
         path: raw.path(),
         headers: raw.headers().entries().collect(),
         body: vec![],
     };
-    let parts = request
-        .path
-        .trim_matches('/')
-        .split('/')
-        .collect::<Vec<_>>();
-    if request.method == "PUT"
-        && parts.len() == 4
-        && parts[0..2] == ["v0", "uploads"]
-        && parts[3] == "content"
+    if request.path == "/ready" && request.method == "GET" {
+        let readiness: Result<Value> = async {
+            app.admin_auth(&request)?;
+            let migrations=crate::storage::migrations::MIGRATIONS;
+            let placeholders=vec!["?";migrations.len()].join(",");
+            let rows=app.db.query(Statement::new(format!("SELECT count(*) AS applied FROM d1_migrations WHERE name IN ({placeholders})"),migrations.iter().map(|(name,_)|Sql::from(*name)).collect())).await?;
+            if rows.first().map(|row|integer(row,"applied")).transpose()? != Some(migrations.len() as i64) {
+                return Err(Error::internal("worker schema revision"));
+            }
+            app.objects.inspect("_waypost_readiness_probe").await?;
+            Ok(json!({"status":"ready","schema_revision":crate::storage::migrations::MIGRATIONS.len(),"environment":if production {"production"} else {"development"}}))
+        }.await;
+        return match readiness {
+            Ok(data) => convert(Response::json(200, json!({"ok":true,"data":data}))),
+            Err(error) => error_response(error),
+        };
+    }
+    if let crate::http::Route::UploadContent(id) = route
+        && app.encryption.is_none()
     {
-        return match app.streaming_upload(&request, &mut raw, parts[2]).await {
+        return match app.streaming_upload(&request, &mut raw, id).await {
             Ok(data) => convert(Response::json(200, json!({"ok":true,"data":data}))),
             Err(e) => error_response(e),
         };
     }
-    if request.method == "GET"
-        && parts.len() == 4
-        && parts[0..2] == ["v0", "blobs"]
-        && parts[3] == "content"
+    if let crate::http::Route::BlobContent(id) = route
+        && app.encryption.is_none()
     {
-        return match app.streaming_download(&request, parts[2]).await {
+        return match app.streaming_download(&request, id).await {
             Ok(response) => Ok(response),
             Err(e) => error_response(e),
         };
     }
+    let max_body = if matches!(route, crate::http::Route::UploadContent(_)) {
+        app.limits.max_blob_bytes as usize
+    } else {
+        app.limits.max_json_bytes
+    };
     if raw.inner().body().is_some() {
         let mut stream = raw.stream()?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            if request.body.len() + chunk.len() > app.limits.max_json_bytes {
+            if request.body.len() + chunk.len() > max_body {
                 return error_response(Error::new(
                     "RESOURCE_LIMIT",
-                    "JSON exceeds Worker deployment limit.",
+                    "Request exceeds Worker deployment limit.",
                 ));
             }
             request.body.extend(chunk);

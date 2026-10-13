@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 from local_store import create_tables, save_outbound, outbound_body, save_inbound
 
+USER_AGENT = "Waypost/0.1.0 (+https://github.com/mainline-org/waypost)"
+
 
 class ApiError(Exception):
     def __init__(self, value):
@@ -41,7 +43,7 @@ class Client:
             raise ValueError('Only service-relative paths are accepted.')
         data = content if content is not None else (json.dumps(value).encode() if value is not None else None)
         req = urllib.request.Request(self.origin + path, data=data, method=method,
-            headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': content_type})
+            headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': content_type, 'User-Agent': USER_AGENT})
         try:
             with self.opener.open(req, timeout=20) as response:
                 raw = response.read()

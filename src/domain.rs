@@ -169,9 +169,6 @@ impl Send {
         if self.subject.is_empty() || self.subject.len() > 256 || self.body.options.len() > 20 {
             return Err(Error::invalid("Invalid subject or message options."));
         }
-        if self.attachment_ids.len() > 16 {
-            return Err(Error::new("RESOURCE_LIMIT", "Too many attachments."));
-        }
         for id in &self.attachment_ids {
             check_id(id)?;
         }

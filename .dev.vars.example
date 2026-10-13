@@ -1,1 +1,4 @@
 WAYPOST_ADMIN_SECRET="replace-with-your-own-at-least-32-byte-secret"
+# Generate and privately store a JSON keyring as described in docs/security.md.
+# WAYPOST_ENCRYPTION_KEYS='{"active":"v1","keys":{"v1":"<64 hex characters>"}}'
+# WAYPOST_CURSOR_SECRET="<independent random secret of at least 32 bytes>"

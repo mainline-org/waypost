@@ -127,11 +127,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 id.clone(),
                 VersionItem {
                     item: MemoryItem {
-                        item_id: id,
+                        item_id: id.clone(),
                         blob_id: text(&row, "blob_id")?,
-                        path: text(&row, "path")?,
+                        path: self.open_field(
+                            space,
+                            &format!("memory/{cid}/{revision}/{id}/path"),
+                            &text(&row, "path")?,
+                        )?,
                         metadata: crate::json::parse(
-                            text(&row, "metadata")?.as_bytes(),
+                            self.open_field(
+                                space,
+                                &format!("memory/{cid}/{revision}/{id}/metadata"),
+                                &text(&row, "metadata")?,
+                            )?
+                            .as_bytes(),
                             self.limits.max_blob_bytes as usize,
                         )?,
                     },
@@ -187,7 +196,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         let mut changes = if let Some(id) = &input.manifest_blob_id {
             let r = self.reference_blob(p, id).await?;
-            let bytes = self.objects.read(&text(&r, "object_key")?).await?;
+            let bytes = self.read_blob_bytes(&r).await?;
             crate::json::decode::<Changes>(crate::json::parse(
                 &bytes,
                 self.limits.max_blob_bytes as usize,
@@ -306,15 +315,21 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 .await;
         }
         let object = if changed {
+            self.journal_object(
+                p,
+                &sid,
+                &self.storage_key(&p.space_id, &format!("object_{manifest_id}")),
+            )
+            .await?;
             Some(
-                self.objects
-                    .create_only(
-                        &format!("object_{manifest_id}"),
-                        &bytes,
-                        "application/json",
-                        &Sha256::digest(&bytes),
-                    )
-                    .await?,
+                self.object_create(
+                    &p.space_id,
+                    &self.storage_key(&p.space_id, &format!("object_{manifest_id}")),
+                    &bytes,
+                    "application/json",
+                    &Sha256::digest(&bytes),
+                )
+                .await?,
             )
         } else {
             None
@@ -331,7 +346,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             params,
         )];
         if let Some(object) = object {
-            q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,sealed_at",vec![vec![p.space_id.clone().into(),manifest_id.clone().into(),text(&collection,"source_actor_id")?.into(),format!("object_{manifest_id}").into(),"application/json".into(),(object.size as i64).into(),object.sha256.into(),now.into()]],Some(guard.clone())));
+            q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,sealed_at",vec![vec![p.space_id.clone().into(),manifest_id.clone().into(),text(&collection,"source_actor_id")?.into(),self.storage_key(&p.space_id,&format!("object_{manifest_id}")).into(),"application/json".into(),(object.size as i64).into(),object.sha256.into(),now.into()]],Some(guard.clone())));
             q.extend(push_rows("memory_revisions","space_id,collection_id,revision,parent_revision,manifest_blob_id,publisher_actor_id,submission_id,committed_at",vec![vec![p.space_id.clone().into(),cid.into(),revision.into(),expected.into(),manifest_id.clone().into(),p.actor_id.clone().into(),sid.clone().into(),now.into()]],Some(guard.clone())));
             let mut items = Vec::new();
             for item in next.values() {
@@ -341,10 +356,19 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     revision.into(),
                     item.item.item_id.clone().into(),
                     item.item.blob_id.clone().into(),
-                    item.item.path.clone().into(),
-                    String::from_utf8(crate::json::canonical(&item.item.metadata)?)
-                        .map_err(|_| Error::storage())?
-                        .into(),
+                    self.seal_field(
+                        &p.space_id,
+                        &format!("memory/{cid}/{revision}/{}/path", item.item.item_id),
+                        &item.item.path,
+                    )?
+                    .into(),
+                    self.seal_field(
+                        &p.space_id,
+                        &format!("memory/{cid}/{revision}/{}/metadata", item.item.item_id),
+                        &String::from_utf8(crate::json::canonical(&item.item.metadata)?)
+                            .map_err(|_| Error::internal("memory metadata encoding"))?,
+                    )?
+                    .into(),
                     item.deleted_in_revision.into(),
                 ]);
             }
@@ -518,7 +542,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let mut items = Vec::new();
         for row in rows.iter().take(limit) {
             after = text(row, "item_id")?;
-            let mut item = json!({"item_id":after,"blob_id":text(row,"blob_id")?,"path":text(row,"path")?,"metadata":crate::json::parse(text(row,"metadata")?.as_bytes(),self.limits.max_blob_bytes as usize)?});
+            let mut item = json!({"item_id":after,"blob_id":text(row,"blob_id")?,"path":self.open_field(&p.space_id,&format!("memory/{cid}/{revision}/{after}/path"),&text(row,"path")?)?,"metadata":crate::json::parse(self.open_field(&p.space_id,&format!("memory/{cid}/{revision}/{after}/metadata"),&text(row,"metadata")?)?.as_bytes(),self.limits.max_blob_bytes as usize)?});
             if let Ok(n) = integer(row, "deleted_in_revision") {
                 item["deleted_in_revision"] = json!(n)
             }

@@ -48,14 +48,16 @@ pub type Row = BTreeMap<String, Value>;
 pub fn text(row: &Row, key: &str) -> Result<String> {
     match row.get(key) {
         Some(Value::Text(s)) => Ok(s.clone()),
-        _ => Err(Error::storage()),
+        _ => Err(Error::internal("decode text column")),
     }
 }
 pub fn integer(row: &Row, key: &str) -> Result<i64> {
     match row.get(key) {
         Some(Value::Integer(n)) => Ok(*n),
-        Some(Value::Text(s)) => s.parse().map_err(|_| Error::storage()),
-        _ => Err(Error::storage()),
+        Some(Value::Text(s)) => s
+            .parse()
+            .map_err(|_| Error::internal("decode integer column")),
+        _ => Err(Error::internal("decode integer column")),
     }
 }
 pub fn optional_text(row: &Row, key: &str) -> Option<String> {
@@ -67,7 +69,7 @@ pub fn optional_text(row: &Row, key: &str) -> Option<String> {
 pub fn blob(row: &Row, key: &str) -> Result<Vec<u8>> {
     match row.get(key) {
         Some(Value::Blob(b)) => Ok(b.clone()),
-        _ => Err(Error::storage()),
+        _ => Err(Error::internal("decode blob column")),
     }
 }
 #[derive(Debug, Clone)]

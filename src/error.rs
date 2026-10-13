@@ -20,6 +20,17 @@ impl Error {
     pub fn storage() -> Self {
         Self::new("STORAGE_UNAVAILABLE", "Storage is temporarily unavailable.")
     }
+    // Only static operation labels enter logs; SQL, credentials and private bodies do not.
+    pub fn internal(operation: &'static str) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        eprintln!("Waypost internal error: {operation}");
+        #[cfg(all(target_arch = "wasm32", feature = "cloudflare"))]
+        worker::console_error!("Waypost internal error: {}", operation);
+        Self::new(
+            "INTERNAL_ERROR",
+            "The service encountered an internal error.",
+        )
+    }
     pub fn not_found() -> Self {
         Self::new("NOT_FOUND", "Resource was not found.")
     }
@@ -41,11 +52,12 @@ impl Error {
             | "UPLOAD_SEALED"
             | "UPLOAD_CONTENT_CONFLICT"
             | "SUBMISSION_PENDING" => 409,
-            "CURSOR_EXPIRED" | "UPLOAD_EXPIRED" => 410,
+            "CURSOR_EXPIRED" | "UPLOAD_EXPIRED" | "SUBMISSION_EXPIRED" => 410,
             "RESOURCE_LIMIT" => 413,
             "CHECKSUM_MISMATCH" | "INVALID_BLOB" | "PRIVACY_BLOCKED" => 422,
             "RATE_LIMITED" => 429,
             "STORAGE_UNAVAILABLE" => 503,
+            "INTERNAL_ERROR" => 500,
             _ => 400,
         }
     }

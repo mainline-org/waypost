@@ -74,14 +74,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let (authority, args) = self.authority_guard(p);
         let mut params = vec![nonce.clone().into(), sid.clone().into()];
         params.extend(args);
-        let guard=("EXISTS(SELECT 1 FROM submissions WHERE submission_id=? AND attempt_nonce=? AND state='prepared')".into(),vec![sid.clone().into(),nonce.clone().into()]);
+        let guard: (String, Vec<Sql>)=("EXISTS(SELECT 1 FROM submissions WHERE submission_id=? AND attempt_nonce=? AND state='prepared')".into(),vec![sid.clone().into(),nonce.clone().into()]);
         let mut q = vec![Statement::new(
             format!(
                 "UPDATE submissions SET state='prepared',attempt_nonce=? WHERE submission_id=? AND state IN('reserved','prepared') AND {authority}"
             ),
             params,
         )];
-        q.extend(push_rows("uploads","space_id,upload_id,blob_id,producer_id,submission_id,object_key,content_type,size_bytes,sha256,filename,state,created_at,expires_at",vec![vec![p.space_id.clone().into(),uid.clone().into(),bid.clone().into(),p.actor_id.clone().into(),sid.clone().into(),format!("object_{bid}").into(),content_type.into(),(size as i64).into(),hex::decode(hash).map_err(|_|Error::storage())?.into(),filename.into(),"pending".into(),now.into(),(now+3_600_000).into()]],Some(guard)));
+        q.extend(push_rows("uploads","space_id,upload_id,blob_id,producer_id,submission_id,object_key,content_type,size_bytes,sha256,filename,state,created_at,expires_at",vec![vec![p.space_id.clone().into(),uid.clone().into(),bid.clone().into(),p.actor_id.clone().into(),sid.clone().into(),self.storage_key(&p.space_id,&format!("object_{bid}")).into(),content_type.into(),(size as i64).into(),hex::decode(hash).map_err(|_|Error::storage())?.into(),filename.map(|name|self.seal_field(&p.space_id,&format!("blob/{bid}/filename"),&name)).transpose()?.into(),"pending".into(),now.into(),(now+3_600_000).into()]],Some(guard.clone())));
+        q.extend(push_rows(
+            "object_writes",
+            "object_key,submission_id,created_at",
+            vec![vec![
+                self.storage_key(&p.space_id, &format!("object_{bid}"))
+                    .into(),
+                sid.clone().into(),
+                now.into(),
+            ]],
+            Some(guard),
+        ));
         q.push(Statement::new("UPDATE submissions SET state='committed',committed_at=? WHERE submission_id=? AND attempt_nonce=? AND state='prepared'",vec![now.into(),sid.into(),nonce.into()]));
         self.db.batch(q).await?;
         self.current(p).await?;
@@ -117,7 +128,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let rows = self
             .db
             .query(Statement::new(
-                "SELECT * FROM uploads WHERE space_id=? AND upload_id=? AND producer_id=?",
+                crate::storage::queries::UPLOAD_BY_OWNER,
                 vec![
                     p.space_id.clone().into(),
                     id.into(),
@@ -135,19 +146,15 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     ) -> Result<Value> {
         p.require("blob.write")?;
         let row = self.upload(p, id).await?;
-        if text(&row, "state")? == "sealed" {
-            return Err(Error::new("UPLOAD_SEALED", "Upload is sealed."));
-        }
-        if integer(&row, "expires_at")? <= self.clock.now_ms() {
-            return Err(Error::new("UPLOAD_EXPIRED", "Upload expired."));
-        }
+        let upload = crate::storage::rows::Upload::decode(&row)?;
+        upload.writable(self.clock.now_ms())?;
         if request.body.len() as u64 > self.limits.max_blob_bytes {
             return Err(Error::new(
                 "RESOURCE_LIMIT",
                 "Blob exceeds deployment limit.",
             ));
         }
-        let content_type = text(&row, "content_type")?;
+        let content_type = upload.info.content_type.clone();
         if request.headers.get("content-type") != Some(&content_type)
             || request.body.len() as i64 != integer(&row, "size_bytes")?
         {
@@ -163,20 +170,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "Actual bytes do not match the expected SHA-256.",
             ));
         }
-        let object_key = text(&row, "object_key")?;
-        let existing = self.objects.inspect(&object_key).await?;
-        self.objects
-            .create_only(&object_key, &request.body, &content_type, &hash)
-            .await?;
+        let object_key = upload.object_key;
+        let existing = self.object_inspect(&p.space_id, &object_key).await?;
+        self.object_create(
+            &p.space_id,
+            &object_key,
+            &request.body,
+            &content_type,
+            &hash,
+        )
+        .await?;
         self.current(p).await?;
         // Late PUTs only create the same immutable bytes; they can never overwrite a sealed object.
         let after = self.upload(p, id).await?;
-        if text(&after, "state")? == "sealed" {
-            return Err(Error::new("UPLOAD_SEALED", "Upload is sealed."));
-        }
-        if integer(&after, "expires_at")? <= self.clock.now_ms() {
-            return Err(Error::new("UPLOAD_EXPIRED", "Upload expired."));
-        }
+        crate::storage::rows::Upload::decode(&after)?.writable(self.clock.now_ms())?;
         Ok(json!({"upload_id":id,"already_uploaded":existing.is_some()}))
     }
     pub(crate) async fn blob_commit(&self, p: &Principal, id: &str, value: Value) -> Result<Value> {
@@ -204,8 +211,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             return Err(Error::new("UPLOAD_EXPIRED", "Upload expired."));
         }
         let object = self
-            .objects
-            .inspect(&text(&upload, "object_key")?)
+            .object_inspect(&p.space_id, &text(&upload, "object_key")?)
             .await?
             .ok_or_else(|| Error::new("BLOB_NOT_SEALED", "Upload bytes are missing."))?;
         if object.sha256 != blob(&upload, "sha256")? {
@@ -236,14 +242,14 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let mut params = vec![nonce.clone().into(), sid.clone().into()];
         params.extend(args);
         params.extend(vec![p.space_id.clone().into(), id.into(), now.into()]);
-        let guard=("EXISTS(SELECT 1 FROM submissions WHERE submission_id=? AND attempt_nonce=? AND state='prepared')".into(),vec![sid.clone().into(),nonce.clone().into()]);
+        let guard: (String, Vec<Sql>)=("EXISTS(SELECT 1 FROM submissions WHERE submission_id=? AND attempt_nonce=? AND state='prepared')".into(),vec![sid.clone().into(),nonce.clone().into()]);
         let mut q = vec![Statement::new(
             format!(
                 "UPDATE submissions SET state='prepared',attempt_nonce=? WHERE submission_id=? AND state IN('reserved','prepared') AND {authority} AND EXISTS(SELECT 1 FROM uploads WHERE space_id=? AND upload_id=? AND (state='sealed' OR expires_at>?))"
             ),
             params,
         )];
-        q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,filename,sealed_at",vec![vec![p.space_id.clone().into(),bid.clone().into(),p.actor_id.clone().into(),text(&upload,"object_key")?.into(),object.content_type.into(),(object.size as i64).into(),object.sha256.into(),optional_text(&upload,"filename").into(),now.into()]],Some(guard.clone())));
+        q.extend(push_rows("blobs","space_id,blob_id,owner_actor_id,object_key,content_type,size_bytes,sha256,filename,sealed_at",vec![vec![p.space_id.clone().into(),bid.clone().into(),p.actor_id.clone().into(),text(&upload,"object_key")?.into(),object.content_type.into(),(object.size as i64).into(),object.sha256.into(),optional_text(&upload,"filename").into(),now.into()]],Some((format!("{} AND NOT EXISTS(SELECT 1 FROM blobs WHERE space_id=? AND blob_id=?)",guard.0),{let mut args=guard.1.clone();args.extend([p.space_id.clone().into(),bid.clone().into()]);args}))));
         let mut params = vec![p.space_id.clone().into(), id.into()];
         params.extend(guard.1.clone());
         q.push(Statement::new(
@@ -327,8 +333,22 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     pub(crate) async fn blob_get(&self, p: &Principal, id: &str) -> Result<Value> {
         let row = self.readable_blob(p, id).await?;
         Ok(
-            json!({"blob_id":id,"size_bytes":integer(&row,"size_bytes")?,"sha256":hex::encode(blob(&row,"sha256")?),"content_type":text(&row,"content_type")?,"filename":optional_text(&row,"filename"),"download_url":format!("{}/v0/blobs/{id}/content",self.config.public_origin),"requires_authorization":true}),
+            json!({"blob_id":id,"size_bytes":integer(&row,"size_bytes")?,"sha256":hex::encode(blob(&row,"sha256")?),"content_type":text(&row,"content_type")?,"filename":optional_text(&row,"filename").map(|name|self.open_field(&p.space_id,&format!("blob/{id}/filename"),&name)).transpose()?,"download_url":format!("{}/v0/blobs/{id}/content",self.config.public_origin),"requires_authorization":true}),
         )
+    }
+    pub(super) async fn read_blob_bytes(&self, row: &Row) -> Result<Vec<u8>> {
+        let bytes = self
+            .object_read(&text(row, "space_id")?, &text(row, "object_key")?)
+            .await?;
+        crate::storage::rows::verify_object(
+            row,
+            &crate::storage::ObjectInfo {
+                size: bytes.len() as u64,
+                sha256: Sha256::digest(&bytes).to_vec(),
+                content_type: text(row, "content_type")?,
+            },
+        )?;
+        Ok(bytes)
     }
     pub(crate) async fn blob_content(&self, request: &Request) -> Result<Response> {
         if request
@@ -344,12 +364,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             .trim_start_matches("/v0/blobs/")
             .trim_end_matches("/content");
         let row = self.readable_blob(&p, id).await?;
-        let bytes = self.objects.read(&text(&row, "object_key")?).await?;
-        if bytes.len() as i64 != integer(&row, "size_bytes")?
-            || Sha256::digest(&bytes).as_slice() != blob(&row, "sha256")?
-        {
-            return Err(Error::storage());
-        }
+        let bytes = self.read_blob_bytes(&row).await?;
         self.current(&p).await?;
         Ok(Response {
             status: 200,

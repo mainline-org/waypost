@@ -1,0 +1,312 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>性质与验证计划 — Waypost RFC</title><meta name="description" content="性质与验证计划。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/properties/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>RFC-0001 配套</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#1-预先约定的测试边界">1. 预先约定的测试边界</a><a href="#2-模型假设与生成器">2. 模型、假设与生成器</a><a href="#3-性质定义">3. 性质定义</a><a href="#4-命令模型与重现">4. 命令模型与重现</a><a href="#5-持久适配的故障检查点">5. 持久适配的故障检查点</a><a href="#6-skill-场景评测">6. Skill 场景评测</a><a href="#7-实现验收门槛">7. 实现验收门槛</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / RFC-0001 配套</p><h1>RFC-0001：性质与验证计划</h1><div class="rfc-source-links"><a href="/rfc/source/rfcs-0001-properties.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><div class="rfc-table"><table><thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>规范</td>
+<td><a href="/rfc/0001/">RFC-0001</a></td>
+</tr>
+<tr>
+<td>状态</td>
+<td>实现前的验证契约，尚无测试代码或已通过声明</td>
+</tr>
+<tr>
+<td>方法</td>
+<td>基于模型的性质测试、接口契约、可控故障、Skill 场景评测</td>
+</tr>
+<tr>
+<td>观察边界</td>
+<td>公开领域操作与同语义的 MCP / HTTP 接口</td>
+</tr>
+</tbody>
+</table></div><h2 id="1-预先约定的测试边界">1. 预先约定的测试边界</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>边界</th>
+<th>验证什么</th>
+<th>不通过什么推断</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>公开服务操作</td>
+<td>send、read、ACK、status、memory publish/read 的状态语义</td>
+<td>私有 helper 的返回值</td>
+</tr>
+<tr>
+<td>持久存储适配</td>
+<td>Blob 可读、发布原子性、CAS 与重启恢复</td>
+<td>内存 mock 已成功就视作生产可靠</td>
+</tr>
+<tr>
+<td>传输适配</td>
+<td>两个入口的 schema、错误、授权与幂等一致</td>
+<td>JSON 格式匹配就代表业务成立</td>
+</tr>
+<tr>
+<td>消费者持久队列</td>
+<td>先保存再 ACK，处理可恢复</td>
+<td>服务能证明任意客户端已写盘</td>
+</tr>
+<tr>
+<td>Skill</td>
+<td>实际工具调用、参数、回执报告与授权范围</td>
+<td>固定文字或单一回复快照</td>
+</tr>
+</tbody>
+</table></div><p>测试通过公开 read/status/Blob 下载观察结果。数据库表可以用于故障注入和适配器诊断，但不能成为业务断言的唯一旁路。</p>
+<h2 id="2-模型假设与生成器">2. 模型、假设与生成器</h2>
+<h3 id="21-简化模型">2.1 简化模型</h3>
+<p>参考模型仅记录：</p>
+<ul>
+<li>Space/Actor/Consumer 及当前授权视图。</li>
+<li>成功提交的 <code>(主体, operation, request_id) → 指纹与稳定结果</code>。</li>
+<li>按真实发布顺序排列的可见资源 ID。</li>
+<li>每个 Consumer 的已收取集合、已处理集合与检查点。</li>
+<li>每个 Collection 的 revision、当前条目及删除标记。</li>
+<li>被确认封存的 Blob 字节与可见范围。</li>
+</ul>
+<p>模型不重写生产的 SQL、R2 路径、MCP SDK 或提交算法。其规则来自 RFC；不得与被测实现共用授权、分页、CAS 或去重 helper。</p>
+<h3 id="22-故障模型与边界">2.2 故障模型与边界</h3>
+<p>性质测试假设耐久存储自身遵守已验证的提交和读取契约。<code>Crash</code> 丢失进程、连接和内存状态，但保留已确认的耐久写入；存储永久物理丢失不在这个模型里。</p>
+<p>故障可以发生在保留前后、Blob 写入前后、发布事务前后、响应传送前后。事务失败的模型允许“整体已提交但响应丢失”或“整体未提交”，不允许假设单个字段总会部分成功。</p>
+<p>跨 R2 / 元数据没有整体事务：Blob 就绪、元数据失败是合法中间态，但此时 Feed 不可见。必须由恢复或清理处理。</p>
+<p>活性测试额外假设：故障最终停止，授权保持有效，历史未裁剪，消费者持续重试，调度不永久饿死任何允许操作。</p>
+<h3 id="23-数据生成">2.3 数据生成</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>生成维度</th>
+<th>必须包含的情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>身份</td>
+<td>多 Space，同名 Actor，多个 Consumer，不同授权；轮换和撤销</td>
+</tr>
+<tr>
+<td>请求</td>
+<td>同 ID 同内容、同 ID 不同内容、不同 operation、跨 HTTP/MCP 重试</td>
+</tr>
+<tr>
+<td>信封</td>
+<td>收件人顺序变化、不同会话、合法回复、非法来源或 Blob 引用</td>
+</tr>
+<tr>
+<td>Feed</td>
+<td>空页、稀疏可见项、页大小 1/边界、晚提交、视图变化</td>
+</tr>
+<tr>
+<td>回执</td>
+<td>重复、逆序、不同 Consumer、旧检查点、新检查点</td>
+</tr>
+<tr>
+<td>资料</td>
+<td>空/边界长度、摘要不符、上传中断、并发重复 PUT、清理竞争</td>
+</tr>
+<tr>
+<td>记忆</td>
+<td>snapshot、delta、空 snapshot、无变化、重复 item、显式删除、冲突</td>
+</tr>
+<tr>
+<td>时间</td>
+<td>上传到期、令牌到期、订阅到期、时钟推进与回调重试</td>
+</tr>
+</tbody>
+</table></div><p>非法操作必须作为真实输入调用并检查稳定错误及无可见副作用，不能全部被 generator 的 precondition 排除。</p>
+<h2 id="3-性质定义">3. 性质定义</h2>
+<h3 id="p01空间和资源隔离">P01：空间和资源隔离</h3>
+<p><strong>范围。</strong> 两个 Space，主体仅有其中一个空间或部分 Collection 的授权。</p>
+<p><strong>性质。</strong> 该主体的 read、status、ACK、Blob、memory 和订阅操作不能读取或改变未授权对象；消息中自填另一个 producer、来源 URI 或显示名称不能改变身份。</p>
+<p><strong>生成。</strong> 复用另一个空间的真实 ID、摘要、游标、request ID 与 Consumer ID；混合合法和非法资料引用。</p>
+<p><strong>观察。</strong> 通过各主体公开 read/status 与可读版本比较授权外状态不变。错误按规范隐藏未知对象的存在性。</p>
+<h3 id="p02稳定幂等提交">P02：稳定幂等提交</h3>
+<p><strong>范围。</strong> 授权有效，语义内容不变，同 <code>(Space, Actor, operation, request_id)</code>。</p>
+<p><strong>性质。</strong> 重试、并发重复和响应丢失后，最多一个业务发布，返回同资源 ID 与发布时间；记忆提交返回同 revision。</p>
+<p><strong>生成。</strong> N 次相同请求、JSON key 顺序变化、收件集合顺序变化、故障与重启。</p>
+<p><strong>观察。</strong> 完整读取 Feed 后只有一个对应发布；status 指向同稳定结果。暂时 <code>pending</code> 不等于第二次发布。</p>
+<h3 id="p03同键内容冲突">P03：同键内容冲突</h3>
+<p><strong>范围。</strong> 原提交已固定幂等指纹。</p>
+<p><strong>性质。</strong> 改正文、附件、收件人或版本参数后复用原键，被拒绝；原资源与 Feed 不变。</p>
+<p><strong>生成。</strong> 对请求各语义字段做独立变异，含合法但不同的新内容。</p>
+<p><strong>观察。</strong> <code>IDEMPOTENCY_CONFLICT</code> 与原记录一致，不能取得新资源 ID。</p>
+<h3 id="p04发布成功可恢复">P04：发布成功可恢复</h3>
+<p><strong>范围。</strong> 已取得 committed，授权与保留条件成立。</p>
+<p><strong>性质。</strong> 当前进程及新建服务实例都可通过公开接口读到正文和全部引用资料，status 返回原提交结果。</p>
+<p><strong>生成。</strong> 发布后立即 Crash，包含响应丢失、重启和多次读。</p>
+<p><strong>观察。</strong> 使用新的实例及实际存储适配读取。不能仅断言 metadata 存在而不取 Blob。</p>
+<h3 id="p05未发布状态不可见">P05：未发布状态不可见</h3>
+<p><strong>范围。</strong> 提交停留 reserved/prepared，或发布事务明确回滚。</p>
+<p><strong>性质。</strong> 新 Consumer 的 Feed 和业务读取不能把它作为已发布资源；不能返回 committed 回执。</p>
+<p><strong>生成。</strong> 在 Blob 成功后阻断元数据提交，恢复提交前后分别读取。</p>
+<p><strong>观察。</strong> 状态可以显示 pending；发布前没有对应资源，发布后只有一个。</p>
+<h3 id="p06晚完成提交仍可收取">P06：晚完成提交仍可收取</h3>
+<p><strong>范围。</strong> A 先保留，B 先发布，消费者已读到 B，随后 A 发布。</p>
+<p><strong>性质。</strong> A 的最终 visible_seq 晚于 B，后续读取必得 A。</p>
+<p><strong>生成。</strong> 让多个保留中的提交按随机次序完成，交错读取不同页。</p>
+<p><strong>观察。</strong> 比较最终完整读取到的 ID 集合与成功提交集合；不得只比较请求创建时间。</p>
+<h3 id="p07消费者独立">P07：消费者独立</h3>
+<p><strong>范围。</strong> Consumer A、B 都可读同一项。</p>
+<p><strong>性质。</strong> A 的 ACK、检查点、停用或 processed 状态不改变 B 的待收取和回执；读取不删除原内容。</p>
+<p><strong>生成。</strong> 分别分页、ACK、重启、使用同 Actor 的不同安装身份。</p>
+<p><strong>观察。</strong> 分别以两个 Consumer 调用 read/status，看各自的记录与稳定原文。</p>
+<h3 id="p08回执单调与无循环">P08：回执单调与无循环</h3>
+<p><strong>范围。</strong> 同 Consumer、同 item 的有效 ACK。</p>
+<p><strong>性质。</strong> <code>none ≤ received ≤ processed</code>，逆序或重复不回退；状态不变不生成新回执变化。确认一个 receipt item 不生成另一个 receipt item。</p>
+<p><strong>生成。</strong> <code>processed/received</code> 的任意重复序列，重复确认回执 Feed。</p>
+<p><strong>观察。</strong> 最终状态为最大有效阶段，Feed 中无无限确认链。</p>
+<h3 id="p09游标完整与视图绑定">P09：游标完整与视图绑定</h3>
+<p><strong>范围。</strong> 授权和视图稳定，保留记录不被裁剪，提交最终静止。</p>
+<p><strong>性质。</strong> 从起点不断分页所得 ID 集合恰为该视图的可见已发布集合；无遗漏、无未授权项。重读允许相同 ID，但顺序不倒退。另一 Consumer、过滤或权限范围不能沿用旧游标。</p>
+<p><strong>生成。</strong> 多页、空页、稀疏记录；篡改游标；改变 view/grants；使用同权限的新 token。</p>
+<p><strong>观察。</strong> 合法分页覆盖独立模型的集合；变化和篡改产生规范错误，重新同步仍可覆盖新视图。</p>
+<h3 id="p10记忆-cas-原子性">P10：记忆 CAS 原子性</h3>
+<p><strong>范围。</strong> 两个不同请求基于同 revision 更新同 Collection。</p>
+<p><strong>性质。</strong> 有内容变化时最多一个成功前进一版；冲突者不产生 head、Revision、Feed 或成功提交结果。相同成功请求重试仍返回其原版本。</p>
+<p><strong>生成。</strong> 并发 snapshot/delta、Blob 先后完成、事务响应丢失、0 行 CAS。</p>
+<p><strong>观察。</strong> 公开 memory.read 和 Feed；不能把 SQL success 或 batch 完成当 CAS 命中。</p>
+<h3 id="p11snapshot-与-delta-的不同含义">P11：Snapshot 与 Delta 的不同含义</h3>
+<p><strong>性质。</strong> Snapshot 的当前 active items 等于明确完整输入；空 snapshot 清空集合。Delta 只改变 upsert/delete 指定项，遗漏其余内容保持。</p>
+<p><strong>生成。</strong> 先建立随机集合，再完整替换或随机局部变更；包括无变化更新和删除不存在的项。</p>
+<p><strong>观察。</strong> 按固定 revision 读完整状态；无变化返回原 revision 且无新 Feed。</p>
+<h3 id="p12来源删除与旧版本恢复">P12：来源删除与旧版本恢复</h3>
+<p><strong>性质。</strong> 一个 Collection 的删除不修改其他来源；删除现存条目后旧 expected revision 的迟到更新被拒绝。只有基于当前版本的明确 upsert 可以恢复同条目。</p>
+<p><strong>生成。</strong> 多集合使用同 item ID、删除后重传旧批次、合法恢复、原请求重试。</p>
+<p><strong>观察。</strong> 各集合的 active items/Tombstone 与版本独立，历史版本仍可读。</p>
+<h3 id="p13blob-封存与完整发布">P13：Blob 封存与完整发布</h3>
+<p><strong>性质。</strong> 未封存、摘要不符、超限或未授权的 Blob 不能进入发布资源。封存和晚到 PUT、暂存清理竞争不改变已发布引用的字节。</p>
+<p><strong>生成。</strong> 上传中断、不同字节复用 upload ID、并发 PUT/commit/cleanup、批次缺一个文件。</p>
+<p><strong>观察。</strong> 下载已发布引用的真实字节，与原确认的摘要和内容相符；半份消息/快照不出现在 Feed。</p>
+<h3 id="p14轮换与撤销">P14：轮换与撤销</h3>
+<p><strong>性质。</strong> 同 Actor/Consumer、同权限的新凭据保留提交幂等和游标连续性；旧凭据被撤销后不能用旧幂等键取得结果或提交新发布。</p>
+<p><strong>生成。</strong> 提交暂停期间轮换/撤销，改变 scope，响应丢失后用新凭据重试。</p>
+<p><strong>观察。</strong> 当前授权总被检查；成功重试无重复，变化范围的游标明确失效。</p>
+<h3 id="p15事件投递独立">P15：事件投递独立</h3>
+<p><strong>范围。</strong> 可选 webhook capability 已实现。</p>
+<p><strong>性质。</strong> HTTP 成功、失败、重复、乱序或订阅到期不改变核心业务内容与 Consumer 处理进度；重试的 <code>(source,id)</code> 稳定，签名时间与 attempt ID 可改变。</p>
+<p><strong>生成。</strong> 模拟 callback 2xx/410/429/5xx、超时、密钥轮换与权限撤销。</p>
+<p><strong>观察。</strong> 核心 Feed 始终可补收；回调记录不伪造 received/processed；到期和撤销停止后续交付。</p>
+<h3 id="p16传输语义一致">P16：传输语义一致</h3>
+<p><strong>性质。</strong> 同主体同领域操作先 HTTP 后 MCP 或相反重试，使用同一幂等范围、验证规则和领域结果。</p>
+<p><strong>生成。</strong> 合法与非法请求，经两个真实适配入口调用；首个响应丢失后切换入口。</p>
+<p><strong>观察。</strong> 公共结果相同，只有一个发布；MCP 协议封装差异不被当作另一业务操作。</p>
+<h3 id="p17消费者待处理可恢复">P17：消费者待处理可恢复</h3>
+<p><strong>范围。</strong> 被测消费者 SDK/参考客户端遵循先写本机再 ACK。</p>
+<p><strong>性质。</strong> 收取与 ACK 后业务处理中断，恢复仍找到待处理记录；没有保存成功时不能越过检查点。</p>
+<p><strong>生成。</strong> 下载、写本机、ACK、业务动作和结果记录之间 Crash。</p>
+<p><strong>观察。</strong> 客户端公开的待处理状态与工具调用轨迹；对外动作不能只因重读而盲目重复。</p>
+<p>这验证参考消费者，不把性质扩大成服务对任意第三方客户端的写盘保证。</p>
+<h3 id="p18有条件的最终补收">P18：有条件的最终补收</h3>
+<p><strong>前置条件。</strong> 故障已停止，授权有效，历史仍在，消费者继续执行，调度公平。</p>
+<p><strong>性质。</strong> 当写入静止后，有限次完整分页与同键恢复能获得全部可见 committed 资源，不留下永远 pending 的已实际提交记录。</p>
+<p><strong>生成。</strong> 有限故障历史后执行 Recovery，再读取至稳定空页。</p>
+<p><strong>观察。</strong> 可见提交集合与读到集合相等，status 和版本一致。无限断网、被撤销权限或物理存储丢失不在承诺范围。</p>
+<h2 id="4-命令模型与重现">4. 命令模型与重现</h2>
+<p>随机命令包括 <code>Prepare/Put/Seal/Send/Read/Ack/PublishSnapshot/PublishDelta/Rotate/Revoke/Crash/Recover/AdvanceClock</code>。并发调度加入多次同键和同基础版本的竞态。</p>
+<p>每条失败记录保存 seed、随机序列、调度轨迹与最小反例，进入回归用例。实现可采用 fast-check 的 command-based 模型与可重放调度；模型应简化而非复制系统。<a href="https://fast-check.dev/docs/advanced/model-based-testing/">fast-check 文档</a></p>
+<p>测试量按测量选择。大量随机历史先跑本地，生产适配跑小而关键的真实契约与故障集，不向真实第三方用户或未授权服务发送测试消息。</p>
+<h2 id="5-持久适配的故障检查点">5. 持久适配的故障检查点</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>检查点</th>
+<th>注入</th>
+<th>必查结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>幂等保留完成</td>
+<td>丢响应或重启</td>
+<td>后续固定同一个资源 ID</td>
+</tr>
+<tr>
+<td>Blob 已写入</td>
+<td>D1 提交失败</td>
+<td>未发布，原提交可恢复</td>
+</tr>
+<tr>
+<td>最终元数据提交</td>
+<td>丢响应</td>
+<td>同键得到 committed 原结果</td>
+</tr>
+<tr>
+<td>记忆 CAS</td>
+<td>0 行条件命中</td>
+<td>无新版本、无 Feed</td>
+</tr>
+<tr>
+<td>上传封存</td>
+<td>迟到 PUT 或 cleanup</td>
+<td>已发布字节不变</td>
+</tr>
+<tr>
+<td>分页读取</td>
+<td>在两页之间晚发布</td>
+<td>下一页/后续读取仍能得到它</td>
+</tr>
+<tr>
+<td>Consumer 本机保存</td>
+<td>Crash</td>
+<td>不错误确认未存内容</td>
+</tr>
+<tr>
+<td>回执写入</td>
+<td>响应丢失</td>
+<td>重复 ACK 不增加第二次变化</td>
+</tr>
+</tbody>
+</table></div><p>Cloudflare 集成测试另测真实 R2 checksum、create-only、D1 原子 guard、存储恢复、当前授权检查与 Worker 资源开销。性质模型不能证明这些外部机制已正确实现。</p>
+<h2 id="6-skill-场景评测">6. Skill 场景评测</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>场景</th>
+<th>观察到的正确行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>未连接 MCP</td>
+<td>保留待发内容，说明连接缺失，没有虚构保存回执</td>
+</tr>
+<tr>
+<td>保存响应丢失</td>
+<td>查原提交，有限同 ID 重试，不换键重复发信</td>
+</tr>
+<tr>
+<td>用户指定收件人</td>
+<td>保留明确目标与原文，使用获准 Actor ID</td>
+</tr>
+<tr>
+<td>来源只导出部分记忆</td>
+<td>Delta 或明确范围集合，不把缺失资料当删除</td>
+</tr>
+<tr>
+<td>版本冲突</td>
+<td>先核实，不只把 expected revision 改成最新值覆盖</td>
+</tr>
+<tr>
+<td>文件传输能力缺失</td>
+<td>如实说明，不假称附件或完整快照已保存</td>
+</tr>
+<tr>
+<td>回信请求需要原宿主批准</td>
+<td>继续遵守该宿主权限，收到不是已经执行</td>
+</tr>
+<tr>
+<td>用户问对方是否已读</td>
+<td>依据真实回执阶段回答，不把 committed 当已读</td>
+</tr>
+</tbody>
+</table></div><p>评测保存可审查的操作轨迹与结果，避免只匹配表达方式。</p>
+<h2 id="7-实现验收门槛">7. 实现验收门槛</h2>
+<ul>
+<li>每个必需性质都有运行测试、前置条件和可重现反例机制。</li>
+<li>至少保留晚提交漏收、CAS 0 行、副本消费者 ACK、令牌轮换、局部删除和回执丢失六类确定性回归。</li>
+<li>两个传输入口及生产存储适配满足契约，不只在内存中通过。</li>
+<li>未实现的事件或宿主 capability 不伪造支持。</li>
+<li>验收记录区分服务性质、存储机制、参考客户端与模型行为，避免过度承诺。</li>
+</ul>
+</div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a>RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

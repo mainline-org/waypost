@@ -1,0 +1,264 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理 Dashboard 与内容检查 — Waypost RFC</title><meta name="description" content="管理 Dashboard 与内容检查。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/0002/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>RFC-0002</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#1-问题与目标">1. 问题与目标</a><a href="#2-信息边界">2. 信息边界</a><a href="#3-页面与操作">3. 页面与操作</a><a href="#4-领域与接口边界">4. 领域与接口边界</a><a href="#5-dashboard登录与会话">5. Dashboard登录与会话</a><a href="#6-部署与结构">6. 部署与结构</a><a href="#7-验证契约提案">7. 验证契约提案</a><a href="#8-实现阶段与扩展选择">8. 实现阶段与扩展选择</a><a href="#9-2026-10-13助手信箱定位与实现更新">9. 2026-10-13：助手信箱定位与实现更新</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / RFC-0002</p><h1>RFC-0002：Waypost 管理 Dashboard 与内容检查</h1><div class="rfc-source-links"><a href="/rfc/source/rfcs-0002-operator-dashboard.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><div class="rfc-table"><table><thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态</td>
+<td>Draft / implementation baseline；设计已确认</td>
+</tr>
+<tr>
+<td>草案版本</td>
+<td>0.1.0</td>
+</tr>
+<tr>
+<td>日期</td>
+<td>2026-10-12</td>
+</tr>
+<tr>
+<td>基线</td>
+<td><a href="/rfc/0001/">RFC-0001</a></td>
+</tr>
+<tr>
+<td>实现范围</td>
+<td>加入首版：实例所有者的 Dashboard、内容检查和已有控制面管理</td>
+</tr>
+</tbody>
+</table></div><h2 id="1-问题与目标">1. 问题与目标</h2>
+<p>多个 Agent通过同一服务交换内容后，实例所有者需要一个可检查的入口：哪些身份已接入、发出了什么、同步了哪个记忆版本、哪些消费者已收取、哪些提交仍待恢复，以及每个凭据有哪些权限。</p>
+<p>Dashboard为这些问题提供统一视图，并复用已有管理操作。它属于 Waypost项目，随开源服务提供。首版服务单个实例所有者；公开托管的多人账号、团队权限和计费另行设计。</p>
+<h2 id="2-信息边界">2. 信息边界</h2>
+<p>首版展示服务已记录的事实：消息发布、记忆版本发布、回执推进、提交当前状态、身份与授权配置。界面逐项标注数据来源与阶段。</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>信息</th>
+<th>首版依据</th>
+<th>表达方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent最近活动</td>
+<td>该 Actor已发布的 Feed及可查询提交</td>
+<td>最近投递、同步、确认及时间</td>
+</tr>
+<tr>
+<td>消息内容</td>
+<td>不可变 Message和正文对象</td>
+<td>原文、来源、附件、会话和收件范围</td>
+</tr>
+<tr>
+<td>消费者进度</td>
+<td>Receipt与分视图 Checkpoint</td>
+<td>received / processed与可靠保存位置</td>
+</tr>
+<tr>
+<td>记忆内容</td>
+<td>固定 Revision的完整条目与 Tombstone</td>
+<td>当前或历史版本、资料下载与结构差异</td>
+</tr>
+<tr>
+<td>投递问题</td>
+<td>Submission的当前状态与固定错误</td>
+<td>reserved、prepared、committed、failed及可恢复标识</td>
+</tr>
+<tr>
+<td>接入配置</td>
+<td>Actor、Consumer、token元数据和 grants</td>
+<td>身份、授权、期限与撤销状态</td>
+</tr>
+</tbody>
+</table></div><p>最近有活动不等于助手正在运行；没有新活动不等于离线。processed是消费者的声明，不能在界面中改称外部任务已成功执行。</p>
+<p>外部助手内部的工具调用或执行轨迹需要显式上报协议、来源标注及用户授权。首版按服务已有事实实现；主动运行轨迹上报列为独立扩展，后续明确范围再实施。界面不伪造未上报的行为。</p>
+<h2 id="3-页面与操作">3. 页面与操作</h2>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">flowchart LR
+    Space[选择 Space] --&gt; Overview[概览]
+    Space --&gt; Agents[Agent列表]
+    Agents --&gt; Detail[Agent详情]
+    Detail --&gt; Activity[活动时间线]
+    Detail --&gt; Messages[消息与会话]
+    Detail --&gt; Memory[记忆版本]
+    Detail --&gt; Access[权限与接入]
+    Detail --&gt; Submissions[提交检查]
+    Messages --&gt; Inspector[原文 / 附件 / 回执]
+    Memory --&gt; Revisions[条目 / 删除标记 / 版本对比]
+    Access --&gt; Controls[创建 / 发放 / 撤销 / 停用]
+</code></pre>
+</details><h3 id="31-概览">3.1 概览</h3>
+<ul>
+<li>当前 Space的 Agent、Consumer和 Collection数量。</li>
+<li>最近已发布活动，明确展示生产者、类型与服务时间。</li>
+<li>reserved/prepared提交数量与最早等待时间。</li>
+<li>failed提交的错误概览，进入检查详情。</li>
+</ul>
+<p>统计直接查询关系数据，首版不引入独立指标平台或缓存计数。界面使用有界分页与手动刷新，可添加有限轮询；核心数据不依赖浏览器持续在线。</p>
+<h3 id="32-agent列表与详情">3.2 Agent列表与详情</h3>
+<p>Actor.kind为 agent的参与者在 Agent列表展示；用户和客户端身份也可切换查看。身份可来自任意兼容 MCP/HTTP宿主，显示名称不能代替 actor_id。</p>
+<p>详情包括：固定身份、当前权限、最近活动、生产与收到的消息、Consumer独立进度、来源 Collection、提交状态。筛选按 Space、Actor、类型、会话和状态，列表每次最多100项，默认50项。</p>
+<h3 id="33-内容-inspector">3.3 内容 Inspector</h3>
+<p>消息详情展示不可变身份、原正文、来源引用、会话关系、收件人、附件和各 Consumer真实回执。资料通过同源受保护下载接口读取，不把对象存储管理地址或永久公开 URL放进界面。</p>
+<p>记忆 Inspector明确选中 revision，后续分页保持该版本。支持查看 Tombstone，并比较两个版本的新增、修改、删除和恢复。对比以结构化条目为依据，首版不做语义总结或自动合并。</p>
+<p>正文与 metadata均视为外部内容。文本、Markdown和下载名称采用安全的显示与编码；网页不执行其中的脚本、工具命令或权限声明。</p>
+<h3 id="34-管理">3.4 管理</h3>
+<p>复用 RFC-0001的控制面：创建 Space、Actor、Consumer、Collection、发放受限 token、撤销 token、停用 Actor，并提供已明确的会话成员授权。</p>
+<p>token原文只在生成成功时显示一次。后续列表只显示 token_id、所属身份、scope、资源授权、期限与撤销状态。权限变更通过发放新凭据与撤销旧凭据完成，原始身份和既有提交不改变。</p>
+<p>停用和撤销页面展示实际影响：新调用和发布会被拒绝，已发布内容与历史版本仍保留。界面不提供删除历史、强行推进消费者回执或清空记忆的隐含快捷操作。</p>
+<h2 id="4-领域与接口边界">4. 领域与接口边界</h2>
+<p>Dashboard是管理视图，不新增 Agent运行时聚合。它使用独立的 InstanceAdminPrincipal；普通数据面 token不能进入 Dashboard管理接口。</p>
+<p>管理员能检查其管理实例内的 Space数据，包括消息、来源记忆和提交。此权能是明确的实例所有者管理能力，不由普通 space.observe自动推导。多所有者托管之前需另行定义管理读取权限。</p>
+<p>新增管理读取接口位于 <code>/admin/v0</code>，与 RFC-0001创建与撤销接口共享认证边界。</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>HTTP接口</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET /spaces</td>
+<td>实例所有者管理的空间列表</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/overview</td>
+<td>基于当前关系状态的有界概览</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/actors</td>
+<td>身份列表，按 kind筛选</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/actors/{actor_id}</td>
+<td>身份详情及授权摘要</td>
+</tr>
+<tr>
+<td>POST /spaces/{space_id}/activity/read</td>
+<td>按发布序号分页的服务事实</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/messages</td>
+<td>消息索引；支持生产者、收件人与会话筛选</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/messages/{message_id}</td>
+<td>原文、附件引用及回执摘要</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/consumers</td>
+<td>Consumer及固定视图</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/tokens</td>
+<td>凭据元数据及 grants，排除原 token</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/submissions</td>
+<td>提交列表，支持 Actor、operation与状态筛选</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/submissions/{submission_id}</td>
+<td>预留身份、准备与当前结果，不包含凭据</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/collections</td>
+<td>来源 Collection列表</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/collections/{collection_id}/revisions</td>
+<td>历史版本列表</td>
+</tr>
+<tr>
+<td>POST /spaces/{space_id}/collections/{collection_id}/read</td>
+<td>固定版本条目页</td>
+</tr>
+<tr>
+<td>POST /spaces/{space_id}/collections/{collection_id}/compare</td>
+<td>两个固定版本之间的分页结构差异</td>
+</tr>
+<tr>
+<td>GET /spaces/{space_id}/blobs/{blob_id}</td>
+<td>管理员获准的封存内容下载</td>
+</tr>
+</tbody>
+</table></div><p>以上路径在表中省略共同 <code>/admin/v0</code>前缀。管理分页游标绑定管理员会话/授权代次、Space、接口和固定过滤条件，不借用某个普通 Consumer的游标，也不推进其检查点。</p>
+<p>MetadataStore的管理读取扩展提供 list_actors、read_actor、read_activity、read_submission、list_collections、read_revision和compare_revisions等具名操作。结果是明确的 Rust结构；首版不把任意 SQL或整份数据库下载暴露给浏览器。</p>
+<h2 id="5-dashboard登录与会话">5. Dashboard登录与会话</h2>
+<p>现有 CLI仍可使用独立管理员 Bearer凭据。浏览器使用短期管理会话：</p>
+<ol>
+<li>管理员通过同源登录页提交 WAYPOST_ADMIN_SECRET。</li>
+<li>服务校验后生成至少32随机字节的 session凭据，只保存其摘要。</li>
+<li>浏览器通过 HttpOnly、生产环境 Secure、SameSite=Strict的 Cookie使用会话。</li>
+<li>写操作检查可信同源 Origin、JSON请求类型与当前有效会话；普通 Agent Bearer不能替代管理身份。</li>
+<li>退出撤销当前会话；会话到期或管理员 secret轮换后失效。</li>
+</ol>
+<p>原管理员 secret不存入浏览器 localStorage、项目配置导出或数据库。生产实例通过 HTTPS使用；本机 HTTP仅用于绑定 loopback的开发方式，并明确采用开发 Cookie配置。</p>
+<p>新增 <code>admin_sessions</code>关系表：session_id、session_digest、admin_secret_fingerprint、created_at、expires_at、revoked_at。默认会话期限8小时，后台不无限续期。凭据轮换后的当前指纹检查在每次管理请求执行，旧会话不能继续操作。</p>
+<p>管理操作按已有幂等契约处理超时，界面不能为同一次创建随意换 request_id。服务返回的错误沿用 RFC-0001领域码；登录和会话错误使用 UNAUTHENTICATED。</p>
+<h2 id="6-部署与结构">6. 部署与结构</h2>
+<p>静态 Dashboard资源位于项目的 <code>dashboard/</code>，由同一个服务提供，使用同源管理接口。Rust负责服务与领域逻辑；前端采用可静态部署的 HTML/CSS/JavaScript，具体框架在实现前确定。</p>
+<p>Cloudflare部署复用 Workers、D1、R2。自托管部署复用原生 Rust服务、SQLite和文件对象存储。Dashboard读写不改变 MCP工具、普通 token授权或原消息协议。</p>
+<p>UI资产进入开源仓库。首版无第三方分析脚本，无外部 Agent凭据收集，也不依赖某个商业客户端才能管理。</p>
+<h2 id="7-验证契约提案">7. 验证契约提案</h2>
+<p>这些条目已在 <a href="/rfc/test-contracts/">Step 3测试契约</a>细化，用户已授权直接实施：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>性质</th>
+<th>观察边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>普通 Agent凭据无法读取管理内容或调用控制面</td>
+<td>真实管理 HTTP接口</td>
+</tr>
+<tr>
+<td>Cookie会话到期、退出及管理员 secret轮换后失效</td>
+<td>登录、退出和受保护管理接口</td>
+</tr>
+<tr>
+<td>任意 Space/Actor筛选返回正确的服务事实</td>
+<td>管理读取与相同已发布数据</td>
+</tr>
+<tr>
+<td>回执展示不把 committed、received、processed混为外部任务结果</td>
+<td>页面状态与公开接口结果</td>
+</tr>
+<tr>
+<td>版本对比及分页不混入后来更新的 head</td>
+<td>两个明确 revision的 Inspector接口</td>
+</tr>
+<tr>
+<td>管理查看不推进 Consumer检查点或产生 ACK</td>
+<td>管理查看前后的公开 Consumer状态</td>
+</tr>
+<tr>
+<td>token列表、HTML、日志和下载不包含原凭据</td>
+<td>公开输出与一次性发放流程</td>
+</tr>
+<tr>
+<td>外部正文无法在 Inspector中执行脚本或改变权限</td>
+<td>浏览器交互测试和控制面状态</td>
+</tr>
+<tr>
+<td>页面创建操作在响应丢失后重试不重复创建</td>
+<td>同管理 request_id的 HTTP重试</td>
+</tr>
+</tbody>
+</table></div><p>管理接口的契约测试使用真实 SQLite与存储适配；核心消息性质仍由 RFC-0001的 P01–P18验证。</p>
+<h2 id="8-实现阶段与扩展选择">8. 实现阶段与扩展选择</h2>
+<p>Dashboard加入首版交付，与核心服务分切片实现：先管理读取接口，再基础页面与 Inspector，再凭据和身份管理闭环。正式宣称可用前完成管理认证与真实页面交互验证。</p>
+<p>主动上报 Agent工具调用/运行记录作为独立扩展。若后续加入，需要明确数据结构、幂等事件身份、来源说明、内容上限和授权契约；原有持久 Feed与消费进度不会被上报日志替代。</p>
+<h2 id="9-2026-10-13助手信箱定位与实现更新">9. 2026-10-13：助手信箱定位与实现更新</h2>
+<p>用户确认以「你的助手信箱」为产品主线，并要求保留已有功能。本节记录新的界面实现；前文的首版规划仍用于说明原始设计，未实现的完整版本对比等扩展不由本节承诺。</p>
+<ul>
+<li>默认进入「信箱」，管理检查使用 <code>kind: &quot;inbox&quot;</code>，只返回当前 Space 中投递给 <code>default_actor_id</code> 的消息。<code>kind: &quot;messages&quot;</code> 继续返回全空间消息，供「管理 → 全部消息」使用。</li>
+<li>信箱与全空间消息的游标分别绑定 kind、Space 和 Actor 过滤，不能互换；管理查看不生成回执。</li>
+<li>主要入口为信箱、助手、资料。活动、隐私、连接凭据、提交和回执收在管理入口；用户与客户端身份仍可在助手页的详细区域查看。</li>
+<li>首次接入只创建 Actor、Consumer 和 <code>message.send</code> 凭据，不自动创建 Collection；默认仅向用户入口发信。生成凭据不是宿主运行在线的证据。</li>
+<li>后续签发支持原有消息收取、回执、附件、记忆读写、明确资源授权与到期机制。新增凭据不撤销旧凭据；缩小权限必须明确撤销旧连接。已签发连接保持原权限。</li>
+<li>管理 token 检查增加 <code>scopes</code> 数组，仍不返回原始凭据或摘要。一次性凭据只在生成结果的临时详情显示，退出与关闭详情清除内容。</li>
+<li>正文用安全的纯文本阅读区展示，来源与技术记录可展开。当前附件检查支持 UTF-8 文本，其他二进制仅展示元数据；没有新增自动执行或外部任务成功语义。</li>
+</ul>
+<p>这个调整不修改消息、记忆、MCP 与数据授权协议，也不实现 TaskGrant 或人工批准。现有部署需更新服务才能使用新版 Dashboard。</p>
+</div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a>RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

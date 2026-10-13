@@ -33,11 +33,18 @@ fn values(parameters: Vec<Value>) -> Vec<SqlValue> {
         })
         .collect()
 }
+fn database_error(error: rusqlite::Error) -> Error {
+    use rusqlite::ErrorCode::*;
+    match error.sqlite_error_code() {
+        Some(DatabaseBusy | DatabaseLocked | SystemIoFailure | DiskFull | CannotOpen) => {
+            Error::storage()
+        }
+        _ => Error::internal("SQLite statement or schema"),
+    }
+}
 fn execute(connection: &Connection, statement: Statement) -> Result<Vec<Row>> {
     let parameters = values(statement.parameters);
-    let mut stmt = connection
-        .prepare(&statement.sql)
-        .map_err(|_| Error::storage())?;
+    let mut stmt = connection.prepare(&statement.sql).map_err(database_error)?;
     let names = stmt
         .column_names()
         .into_iter()
@@ -45,19 +52,20 @@ fn execute(connection: &Connection, statement: Statement) -> Result<Vec<Row>> {
         .collect::<Vec<_>>();
     let mut cursor = stmt
         .query(params_from_iter(parameters))
-        .map_err(|_| Error::storage())?;
+        .map_err(database_error)?;
     let mut result = Vec::new();
-    while let Some(row) = cursor.next().map_err(|_| Error::storage())? {
+    while let Some(row) = cursor.next().map_err(database_error)? {
         let mut fields = Row::new();
         for (index, name) in names.iter().enumerate() {
-            let value = match row.get_ref(index).map_err(|_| Error::storage())? {
+            let value = match row.get_ref(index).map_err(database_error)? {
                 ValueRef::Null => Value::Null,
                 ValueRef::Integer(n) => Value::Integer(n),
-                ValueRef::Text(s) => {
-                    Value::Text(String::from_utf8(s.to_vec()).map_err(|_| Error::storage())?)
-                }
+                ValueRef::Text(s) => Value::Text(
+                    String::from_utf8(s.to_vec())
+                        .map_err(|_| Error::internal("SQLite text encoding"))?,
+                ),
                 ValueRef::Blob(b) => Value::Blob(b.to_vec()),
-                ValueRef::Real(_) => return Err(Error::storage()),
+                ValueRef::Real(_) => return Err(Error::internal("SQLite column type")),
             };
             fields.insert(name.clone(), value);
         }
@@ -67,45 +75,36 @@ fn execute(connection: &Connection, statement: Statement) -> Result<Vec<Row>> {
 }
 impl SqliteDb {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let mut connection = Connection::open(path).map_err(|_| Error::storage())?;
+        let mut connection = Connection::open(path).map_err(database_error)?;
         connection
             .busy_timeout(std::time::Duration::from_secs(5))
-            .map_err(|_| Error::storage())?;
+            .map_err(database_error)?;
         connection
             .execute_batch("PRAGMA foreign_keys=ON;PRAGMA synchronous=FULL;")
-            .map_err(|_| Error::storage())?;
+            .map_err(database_error)?;
         connection
             .execute_batch(
                 "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY);",
             )
-            .map_err(|_| Error::storage())?;
-        for (version, sql) in [
-            (
-                1i64,
-                include_str!("../../migrations/0001_identity_mailbox.sql"),
-            ),
-            (2, include_str!("../../migrations/0002_receipts.sql")),
-            (3, include_str!("../../migrations/0003_blobs_memory.sql")),
-            (4, include_str!("../../migrations/0004_privacy.sql")),
-            (5, include_str!("../../migrations/0005_admin_sessions.sql")),
-            (6, include_str!("../../migrations/0006_grant_integrity.sql")),
-        ] {
+            .map_err(database_error)?;
+        for (index, (_, sql)) in crate::storage::migrations::MIGRATIONS.iter().enumerate() {
+            let version = (index + 1) as i64;
             let installed: bool = connection
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=?)",
                     [version],
                     |r| r.get(0),
                 )
-                .map_err(|_| Error::storage())?;
+                .map_err(database_error)?;
             if !installed {
-                let tx = connection.transaction().map_err(|_| Error::storage())?;
-                tx.execute_batch(sql).map_err(|_| Error::storage())?;
+                let tx = connection.transaction().map_err(database_error)?;
+                tx.execute_batch(sql).map_err(database_error)?;
                 tx.execute(
                     "INSERT INTO schema_migrations(version) VALUES(?)",
                     [version],
                 )
-                .map_err(|_| Error::storage())?;
-                tx.commit().map_err(|_| Error::storage())?;
+                .map_err(database_error)?;
+                tx.commit().map_err(database_error)?;
             }
         }
         Ok(Self {
@@ -121,12 +120,12 @@ impl Database for SqliteDb {
         let mut connection = self.connection.borrow_mut();
         let tx = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .map_err(|_| Error::storage())?;
+            .map_err(database_error)?;
         let mut results = Vec::new();
         for statement in statements {
             results.push(execute(&tx, statement)?);
         }
-        tx.commit().map_err(|_| Error::storage())?;
+        tx.commit().map_err(database_error)?;
         Ok(results)
     }
 }

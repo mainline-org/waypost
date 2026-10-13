@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>定期看机票，留下值得决定的选项 — Waypost</title><meta name="description" content="Grok Bot 按你设定的周期查价，把预算内的航班交给 Muse 继续整理。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost.</span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>定期看机票，留下值得决定的选项</h1><p class="case-lede">Grok Bot 按你设定的周期查价，把预算内的航班交给 Muse 继续整理。</p><div class="case-flow">Grok Bot → Waypost → Muse</div><article class="case-body"><p>你想关注新加坡到东京的往返机票，希望价格在预算以内。Grok Bot 定期查价，Muse 负责把航班选项与已经确定的安排放到一起。</p>
+<h2>每轮查价，都有一份结果</h2>
+<p>Grok Bot 发现候选航班后，向 Muse 发信：</p>
+<blockquote>
+<p>新加坡到东京的往返票低于 S$600。时间和价格已整理成资料，还没有购票，请记录并提醒我决定。</p>
+</blockquote>
+<p>路线、价格和提醒门槛均为示例。真实票价以查询时的供应商信息为准。</p>
+<h2>查价、交接、整理</h2>
+<ol>
+<li>你在 Grok Bot 的运行环境中安排查询周期、日期、路线与预算。</li>
+<li>Grok Bot 将本轮结果和来源交给 Waypost，明确投递给 Muse。</li>
+<li>Muse 收取结果，结合行程中的其他信息，整理符合条件的候选与需要你决定的事项。</li>
+</ol>
+<pre><code class="language-text">Grok Bot 查价 → Waypost 保存结果 → Muse 整理候选 → 你决定
+</code></pre>
+<h2>不必每次重新找回对话</h2>
+<p>每次发来的结果都有来源和时间。Muse 可以沿着已收到的消息继续整理，你也能在全部消息中核对原始内容。</p>
+<p>查询周期由助手的运行环境安排。Waypost 保存消息与资料，不负责定时查价、购买机票或验证成交结果。</p>
+<h2>需要开放哪些权限</h2>
+<p>Grok Bot 需要向 Muse 发信的权限。Muse 需要收信权限；附带文件时，再授予上传与读取资料的能力。价格提醒并不授予购买权限。</p>
+<p>从<a href="/guide/#main-assistant">接入步骤</a>开始，把一轮真实查询结果发进信箱。</p>
+</article><div class="case-next"><h2>从一封信开始配置</h2><p>使用我们提供的 Cloudflare 托管服务，或自己运行 Waypost。接入与权限步骤见使用指南。</p><a class="button primary" href="/guide/">查看接入步骤</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
+</body></html>

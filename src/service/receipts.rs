@@ -112,7 +112,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             sid.clone().into(),
         ];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("INSERT OR IGNORE INTO receipts(space_id,receipt_id,consumer_id,subject_item_id,stage,version,updated_at,last_submission_id) SELECT ai.space_id,ai.candidate_receipt_id,?,ai.subject_item_id,ai.desired_stage,1,?,? FROM submission_ack_items ai WHERE ai.submission_id=? AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_CREATE_RECEIPTS.replace("{guard}", &guard.0),
+            args,
+        ));
         let mut args = vec![
             sid.clone().into(),
             now.into(),
@@ -122,23 +125,38 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             sid.clone().into(),
         ];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("UPDATE receipts SET stage=(SELECT desired_stage FROM submission_ack_items ai WHERE ai.submission_id=? AND ai.subject_item_id=receipts.subject_item_id),version=version+1,updated_at=?,last_submission_id=? WHERE space_id=? AND consumer_id=? AND EXISTS(SELECT 1 FROM submission_ack_items ai WHERE ai.submission_id=? AND ai.subject_item_id=receipts.subject_item_id AND ai.desired_stage>receipts.stage) AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_ADVANCE_RECEIPTS.replace("{guard}", &guard.0),
+            args,
+        ));
         let mut args = vec![
             p.actor_id.clone().into(),
             sid.clone().into(),
             sid.clone().into(),
         ];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("INSERT OR IGNORE INTO feed_items(item_id,space_id,item_type,resource_id,resource_version,producer_id,thread_id,committed_at) SELECT ai.candidate_feed_id,ai.space_id,'receipt',r.receipt_id,r.version,?,f.thread_id,r.updated_at FROM submission_ack_items ai JOIN receipts r ON r.space_id=ai.space_id AND r.consumer_id=(SELECT resource_id FROM submissions WHERE submission_id=ai.submission_id) AND r.subject_item_id=ai.subject_item_id JOIN feed_items f ON f.space_id=ai.space_id AND f.item_id=ai.subject_item_id WHERE ai.submission_id=? AND r.last_submission_id=? AND f.item_type<>'receipt' AND NOT EXISTS(SELECT 1 FROM feed_receipt_updates u WHERE u.space_id=r.space_id AND u.receipt_id=r.receipt_id AND u.receipt_version=r.version) AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_PUBLISH_FEED.replace("{guard}", &guard.0),
+            args,
+        ));
         let mut args = vec![p.actor_id.clone().into(), sid.clone().into()];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("INSERT OR IGNORE INTO feed_receipt_updates(space_id,item_id,receipt_id,subject_item_id,subject_resource_id,consumer_id,actor_id,stage,receipt_version,updated_at) SELECT ai.space_id,ai.candidate_feed_id,r.receipt_id,ai.subject_item_id,old.resource_id,r.consumer_id,?,r.stage,r.version,r.updated_at FROM submission_ack_items ai JOIN receipts r ON r.space_id=ai.space_id AND r.consumer_id=(SELECT resource_id FROM submissions WHERE submission_id=ai.submission_id) AND r.subject_item_id=ai.subject_item_id JOIN feed_items new ON new.space_id=ai.space_id AND new.item_id=ai.candidate_feed_id JOIN feed_items old ON old.space_id=ai.space_id AND old.item_id=ai.subject_item_id WHERE ai.submission_id=? AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_SNAPSHOT_RECEIPTS.replace("{guard}", &guard.0),
+            args,
+        ));
         let mut args = vec![sid.clone().into()];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("INSERT OR IGNORE INTO feed_recipients(space_id,item_id,actor_id) SELECT ai.space_id,ai.candidate_feed_id,old.producer_id FROM submission_ack_items ai JOIN feed_items new ON new.space_id=ai.space_id AND new.item_id=ai.candidate_feed_id JOIN feed_items old ON old.space_id=ai.space_id AND old.item_id=ai.subject_item_id WHERE ai.submission_id=? AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_DELIVER_RECEIPTS.replace("{guard}", &guard.0),
+            args,
+        ));
         let mut args = vec![sid.clone().into()];
         args.extend(guard.1.clone());
-        q.push(Statement::new(format!("UPDATE submission_ack_items SET result_stage=(SELECT r.stage FROM receipts r WHERE r.space_id=submission_ack_items.space_id AND r.consumer_id=(SELECT resource_id FROM submissions WHERE submission_id=submission_ack_items.submission_id) AND r.subject_item_id=submission_ack_items.subject_item_id),result_version=(SELECT r.version FROM receipts r WHERE r.space_id=submission_ack_items.space_id AND r.consumer_id=(SELECT resource_id FROM submissions WHERE submission_id=submission_ack_items.submission_id) AND r.subject_item_id=submission_ack_items.subject_item_id) WHERE submission_id=? AND {}",guard.0),args));
+        q.push(Statement::new(
+            crate::storage::queries::ACK_SAVE_RESULTS.replace("{guard}", &guard.0),
+            args,
+        ));
         if let Some(position) = checkpoint {
             let mut args = vec![
                 p.space_id.clone().into(),
@@ -149,7 +167,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 now.into(),
             ];
             args.extend(guard.1.clone());
-            q.push(Statement::new(format!("INSERT INTO consumer_checkpoints(space_id,consumer_id,view_revision,grant_fingerprint,sequence,updated_at) SELECT ?,?,?,?,?,? WHERE {} ON CONFLICT(space_id,consumer_id,view_revision,grant_fingerprint) DO UPDATE SET sequence=excluded.sequence,updated_at=excluded.updated_at WHERE excluded.sequence>consumer_checkpoints.sequence",guard.0),args));
+            q.push(Statement::new(
+                crate::storage::queries::ACK_CHECKPOINT.replace("{guard}", &guard.0),
+                args,
+            ));
         }
         q.push(Statement::new("UPDATE submissions SET state='committed',committed_at=?,result_checkpoint_cursor=? WHERE submission_id=? AND attempt_nonce=? AND state='prepared'",vec![now.into(),input.checkpoint_cursor.into(),sid.into(),nonce.into()]));
         self.db.batch(q).await?;
@@ -209,7 +230,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let (authority, auth) = self.authority_guard(p);
         let (visible, visibility) = self.feed_visibility(p, "f");
         let mut sql = format!(
-            "SELECT f.*,CAST(f.sequence AS TEXT) AS visible_seq,m.subject,m.kind,mr.parent_revision,mr.manifest_blob_id,u.subject_item_id,u.subject_resource_id,u.consumer_id AS receipt_consumer_id,u.actor_id AS receipt_actor_id,u.stage AS receipt_stage,u.receipt_version,u.updated_at AS receipt_updated_at FROM feed_items f LEFT JOIN messages m ON f.item_type='message' AND m.space_id=f.space_id AND m.message_id=f.resource_id LEFT JOIN memory_revisions mr ON f.item_type='memory_revision' AND mr.space_id=f.space_id AND mr.collection_id=f.resource_id AND mr.revision=f.resource_version LEFT JOIN feed_receipt_updates u ON f.item_type='receipt' AND u.space_id=f.space_id AND u.item_id=f.item_id WHERE f.space_id=? AND f.sequence>CAST(? AS INTEGER) AND {authority} AND {visible}"
+            "SELECT f.*,CAST(f.space_sequence AS TEXT) AS visible_seq,m.subject,m.kind,mr.parent_revision,mr.manifest_blob_id,u.subject_item_id,u.subject_resource_id,u.consumer_id AS receipt_consumer_id,u.actor_id AS receipt_actor_id,u.stage AS receipt_stage,u.receipt_version,u.updated_at AS receipt_updated_at FROM feed_items f LEFT JOIN messages m ON f.item_type='message' AND m.space_id=f.space_id AND m.message_id=f.resource_id LEFT JOIN memory_revisions mr ON f.item_type='memory_revision' AND mr.space_id=f.space_id AND mr.collection_id=f.resource_id AND mr.revision=f.resource_version LEFT JOIN feed_receipt_updates u ON f.item_type='receipt' AND u.space_id=f.space_id AND u.item_id=f.item_id WHERE f.space_id=? AND f.space_sequence>CAST(? AS INTEGER) AND {authority} AND {visible}"
         );
         let mut args = vec![p.space_id.clone().into(), position.to_string().into()];
         args.extend(auth);
@@ -235,7 +256,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 args.extend(values.iter().cloned().map(Sql::from));
             }
         }
-        sql.push_str(" ORDER BY f.sequence LIMIT ?");
+        sql.push_str(" ORDER BY f.space_sequence LIMIT ?");
         args.push((limit as i64).into());
         self.db.query(Statement::new(sql, args)).await
     }
@@ -264,17 +285,18 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let mut items = Vec::new();
         let mut next = position;
         for row in rows {
-            let item = text(&row, "item_id")?;
-            next = integer(&row, "visible_seq")? as u64;
+            let feed = crate::storage::rows::FeedItem::decode(&row)?;
+            let item = feed.id;
+            next = feed.position;
             let kind = text(&row, "item_type")?;
-            let data = if kind == "message" {
-                json!({"message_id":text(&row,"resource_id")?,"subject":text(&row,"subject")?,"kind":text(&row,"kind")?})
-            } else if kind == "memory_revision" {
+            let data = if matches!(feed.kind, crate::storage::rows::FeedKind::Message) {
+                json!({"message_id":text(&row,"resource_id")?,"subject":self.open_field(&p.space_id,&format!("message/{}/subject",feed.resource_id),&text(&row,"subject")?)?,"kind":text(&row,"kind")?})
+            } else if matches!(feed.kind, crate::storage::rows::FeedKind::MemoryRevision) {
                 json!({"collection_id":text(&row,"resource_id")?,"revision":integer(&row,"resource_version")?,"parent_revision":integer(&row,"parent_revision")?,"manifest_blob_id":text(&row,"manifest_blob_id")?})
             } else {
                 json!({"receipt_id":text(&row,"resource_id")?,"subject_item_id":text(&row,"subject_item_id")?,"subject_resource_id":text(&row,"subject_resource_id")?,"consumer_id":text(&row,"receipt_consumer_id")?,"actor_id":text(&row,"receipt_actor_id")?,"stage":if integer(&row,"receipt_stage")?==2{"processed"}else{"received"},"updated_at":stamp(integer(&row,"receipt_updated_at")?)?})
             };
-            items.push(json!({"item_id":item,"space_id":p.space_id,"visible_seq":next.to_string(),"item_type":kind,"resource_id":text(&row,"resource_id")?,"resource_version":integer(&row,"resource_version")?,"producer_id":text(&row,"producer_id")?,"recipient_ids":recipients.get(&item).cloned().unwrap_or_default(),"thread_id":optional_text(&row,"thread_id"),"committed_at":stamp(integer(&row,"committed_at")?)?,"data":data}));
+            items.push(json!({"item_id":item,"space_id":p.space_id,"visible_seq":next.to_string(),"item_type":kind,"resource_id":feed.resource_id,"resource_version":feed.version,"producer_id":feed.producer_id,"recipient_ids":recipients.get(&item).cloned().unwrap_or_default(),"thread_id":feed.thread_id,"committed_at":stamp(feed.committed_at)?,"data":data}));
         }
         self.current(p).await?;
         Ok(json!({"items":items,"next_cursor":self.feed_cursor(p,next)?,"has_more":more}))

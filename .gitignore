@@ -18,3 +18,10 @@
 
 __pycache__/
 *.pyc
+
+# Account-specific production configuration and credentials
+/wrangler.production.toml
+/.env.production
+
+# Website deployment metadata stays local
+/website/.vercel/

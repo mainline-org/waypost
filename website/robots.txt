@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://waypost.hika.fyi/sitemap.xml
