@@ -33,6 +33,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "messages" => ("messages", "message_id", ""),
             "uploads" => ("uploads", "upload_id", " AND filename IS NOT NULL"),
             "blobs" => ("blobs", "blob_id", " AND filename IS NOT NULL"),
+            "access_requests" => ("access_requests", "request_id", ""),
             "memory_items" => (
                 "memory_revision_items",
                 "space_id||'|'||collection_id||'|'||printf('%020d',revision)||'|'||item_id",
@@ -57,7 +58,11 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let mut converted = 0;
         let mut candidates = 0;
         for row in rows.iter().take(limit) {
-            let space = text(row, "space_id")?;
+            let space = if kind == "access_requests" {
+                "onboarding".to_owned()
+            } else {
+                text(row, "space_id")?
+            };
             if kind == "objects" {
                 let source = text(row, "object_key")?;
                 let stored = self.objects.read(&source).await?;
@@ -137,6 +142,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 let columns = match kind.as_str() {
                     "messages" => vec!["subject"],
                     "memory_items" => vec!["path", "metadata"],
+                    "access_requests" => vec!["contact"],
                     _ => vec!["filename"],
                 };
                 let mut statements = vec![];
@@ -144,6 +150,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     let context = match kind.as_str() {
                         "messages" => format!("message/{identity}/subject"),
                         "uploads" | "blobs" => format!("blob/{}/filename", text(row, "blob_id")?),
+                        "access_requests" => format!("access/{identity}/email"),
                         _ => format!(
                             "memory/{}/{}/{}/{column}",
                             text(row, "collection_id")?,
@@ -176,7 +183,20 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     if dry_run {
                         continue;
                     }
-                    statements.push(Statement::new(format!("UPDATE {table} SET {column}=? WHERE space_id=? AND {page_key}=? AND {column}=?"),vec![self.seal_field(&space,&context,&plain)?.into(),space.clone().into(),identity.clone().into(),stored.into()]));
+                    let mut args = vec![self.seal_field(&space, &context, &plain)?.into()];
+                    let scope = if kind == "access_requests" {
+                        ""
+                    } else {
+                        args.push(space.clone().into());
+                        "space_id=? AND "
+                    };
+                    args.extend(vec![identity.clone().into(), stored.into()]);
+                    statements.push(Statement::new(
+                        format!(
+                            "UPDATE {table} SET {column}=? WHERE {scope}{page_key}=? AND {column}=?"
+                        ),
+                        args,
+                    ));
                 }
                 if !statements.is_empty() {
                     self.db.batch(statements).await?;

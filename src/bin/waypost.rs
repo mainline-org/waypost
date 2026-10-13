@@ -129,7 +129,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .enable_all()
             .build()?;
         runtime.block_on(async {
-            for kind in ["objects", "messages", "uploads", "blobs", "memory_items"] {
+            for kind in [
+                "objects",
+                "messages",
+                "uploads",
+                "blobs",
+                "memory_items",
+                "access_requests",
+            ] {
                 let mut cursor = serde_json::Value::Null;
                 loop {
                     let response = app

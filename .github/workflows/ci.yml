@@ -94,10 +94,12 @@ jobs:
           npx --yes wrangler@4.111.0 dev --local --port 8791 > /tmp/waypost-worker.log 2>&1 &
           service_pid=$!
           trap 'kill "$service_pid"' EXIT
-          for attempt in $(seq 1 45); do
-            if curl --fail --silent "$WAYPOST_URL/health" >/dev/null; then break; fi
+          ready=false
+          for attempt in $(seq 1 180); do
+            if curl --fail --silent "$WAYPOST_URL/health" >/dev/null; then ready=true; break; fi
             sleep 1
           done
+          if [ "$ready" != true ]; then tail -n 60 /tmp/waypost-worker.log; exit 1; fi
           node examples/mcp-client/demo.mjs
           node examples/mcp-client/handoff.mjs
           node examples/mcp-client/onboarding-ui.mjs

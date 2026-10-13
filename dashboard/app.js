@@ -249,12 +249,14 @@ function openOnboarding() {
   openDetail('接入助手', form); input.focus();
 }
 async function issueConnection(task) {
+  const epoch = authEpoch;
   const root = `/admin/v0/spaces/${task.sid}`;
   let credential;
   while (!credential?.token) {
-    if (task.revoke_token_id) {await api(root + `/tokens/${task.revoke_token_id}`, 'DELETE', {}); delete task.revoke_token_id; task.token_request_id = crypto.randomUUID(); saveCreation(task);}
+    if (task.revoke_token_id) {await api(root + `/tokens/${task.revoke_token_id}`, 'DELETE', {}); if (epoch !== authEpoch) return; delete task.revoke_token_id; task.token_request_id = crypto.randomUUID(); saveCreation(task);}
     if (!task.token_request_id) {task.token_request_id = task.prefix + '-token'; saveCreation(task);}
     credential = await api(root + '/tokens', 'POST', {request_id: task.token_request_id, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, scopes: task.scopes, resource_grants: task.grants || {}, ...(task.expires_at ? {expires_at: task.expires_at} : {}), ...(task.default_recipient_id ? {default_recipient_id: task.default_recipient_id} : {})});
+    if (epoch !== authEpoch) return;
     if (!credential.token) {task.revoke_token_id = credential.token_id; saveCreation(task);}
   }
   const info = {mcp_url: `${location.origin}/mcp`, headers: {Authorization: `Bearer ${credential.token}`}, actor_id: task.actor.actor_id, consumer_id: task.consumer.consumer_id, default_recipient_id: task.default_recipient_id || spaces.find(s => s.space_id === task.sid)?.default_actor_id, ...(task.collection ? {collection_id: task.collection.collection_id} : {})};
@@ -342,11 +344,14 @@ $('#add-agent').addEventListener('click', () => busy($('#add-agent'), () => open
 startOnboardingSession();
 
 $('#owner-credential').addEventListener('click', () => busy($('#owner-credential'), async () => {
+  const epoch = authEpoch;
   if (!sid) throw new Error('先创建或选择一个用户空间。');
   const path = `/admin/v0/spaces/${sid}/owner-credential`;
   const current = await api(path);
+  if (epoch !== authEpoch) return;
   if (current.version && !confirm('重新签发会使旧用户凭据和登录会话失效。继续签发？')) return;
   const result = await api(path, 'POST', {expected_version: current.version});
+  if (epoch !== authEpoch) return;
   showDetail('用户登录凭据 · 只展示一次', {dashboard_url: `${location.origin}/dashboard`, space_id: sid, credential: result.credential, note: '这份凭据只管理当前用户空间。通过私密渠道交给该用户；助手使用另外签发的连接凭据。'});
 }));
 
@@ -382,19 +387,21 @@ function openInvitation(access = null) {
 }
 
 async function createInvitation(name, access = null) {
+  const epoch = authEpoch;
   let task = pendingCreation();
   if (!task) {task = {type: 'invite', name, prefix: crypto.randomUUID(), access_request_id: access?.request_id || null, sid: access?.space_id || null}; saveCreation(task);}
-  if (!task.sid) {const space = await api('/admin/v0/spaces', 'POST', {request_id: task.prefix + '-space', display_name: task.name}); task.sid = space.space_id; saveCreation(task);}
+  if (!task.sid) {const space = await api('/admin/v0/spaces', 'POST', {request_id: task.prefix + '-space', display_name: task.name}); if (epoch !== authEpoch) return; task.sid = space.space_id; saveCreation(task);}
   let result;
   while (!result?.invite_token) {
-    if (task.revoke_invitation_id) {await api(`/admin/v0/spaces/${task.sid}/invitations/${task.revoke_invitation_id}`, 'DELETE', {}); delete task.revoke_invitation_id; task.invite_request_id = crypto.randomUUID(); saveCreation(task);}
+    if (task.revoke_invitation_id) {await api(`/admin/v0/spaces/${task.sid}/invitations/${task.revoke_invitation_id}`, 'DELETE', {}); if (epoch !== authEpoch) return; delete task.revoke_invitation_id; task.invite_request_id = crypto.randomUUID(); saveCreation(task);}
     if (!task.invite_request_id) task.invite_request_id = task.prefix + '-invite';
     saveCreation(task);
     result = await api(`/admin/v0/spaces/${task.sid}/invitations`, 'POST', {request_id: task.invite_request_id, ...(task.access_request_id ? {access_request_id: task.access_request_id} : {})});
+    if (epoch !== authEpoch) return;
     if (!result.invite_token) {task.revoke_invitation_id = result.invitation_id; saveCreation(task);}
   }
   finishCreation();
-  openDetail(ot('inviteTitle'), el('p', ot('invitePrivate')), el('pre', result.invite_url), el('p', date(result.expires_at)), button(ot('revokeInvite'), async () => {await api(`/admin/v0/spaces/${task.sid}/invitations/${result.invitation_id}`, 'DELETE', {}); openDetail(ot('inviteTitle'), el('p', ot('inviteRevoked')));}));
+  openDetail(ot('inviteTitle'), el('p', ot('invitePrivate')), el('pre', result.invite_url), el('p', date(result.expires_at)), button(ot('revokeInvite'), async () => {await api(`/admin/v0/spaces/${task.sid}/invitations/${result.invitation_id}`, 'DELETE', {}); if (epoch !== authEpoch) return; openDetail(ot('inviteTitle'), el('p', ot('inviteRevoked')));}));
   if (tab === 'access') await load();
 }
 
@@ -413,11 +420,13 @@ $('#request-access').addEventListener('click', () => {
 
 async function startOnboardingSession() {
   const parameters = new URLSearchParams(location.hash.slice(1)), invitation = parameters.get('invite');
-  if (!invitation) {const requesting = parameters.has('request-access'); if (requesting) history.replaceState(null, '', location.pathname); try {await entered(await api('/admin/session'));} catch {showLogin(); if (requesting) $('#request-access').click();} return;}
-  history.replaceState(null, '', location.pathname);
+  if (!invitation) {const requesting = parameters.has('request-access'); if (requesting) history.replaceState(null, '', location.pathname + location.search); try {await entered(await api('/admin/session'));} catch {showLogin(); if (requesting) $('#request-access').click();} return;}
+  history.replaceState(null, '', location.pathname + location.search);
+  let session;
   try {
-    const session = await api('/admin/invitation', 'POST', {invite_token: invitation});
-    await entered(session);
-    openDetail(ot('inviteCredential'), el('p', ot('inviteJoined')), el('pre', session.credential));
-  } catch (error) {showLogin(); notice(error.message);}
+    session = await api('/admin/invitation', 'POST', {invite_token: invitation});
+  } catch (error) {showLogin(); notice(error.message); return;}
+  const loading = entered(session), epoch = authEpoch;
+  openDetail(ot('inviteCredential'), el('p', ot('inviteJoined')), el('pre', session.credential));
+  try {await loading;} catch (error) {if (epoch === authEpoch) notice(error.message);}
 }

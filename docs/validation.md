@@ -77,8 +77,10 @@ cargo clippy --no-default-features --features cloudflare --target wasm32-unknown
 
 在独立 worktree 实现，避免覆盖并行 i18n。新增五项 HTTP 回归覆盖默认投递目标与发信范围、主助手选择的版本检查与空间限制、一次性领取与个人会话、邀请撤销/替换/到期/所有者变化、使用申请的隐私与幂等。
 
-41 项 Rust 测试与原生 clippy 通过。Dashboard DOM 回归在每页 20 条的公开 HTTP 契约下复现并修复了权限面板故障，也验证了后续资料页被保留。真实本机原生服务与 Workerd/D1/R2 的官方 MCP 客户端完成接入助手投递、同键恢复、主助手可靠保存后 received、汇报用户与 processed，发信连接无法读信箱。
+44 项 Rust 测试与原生、Wasm clippy 通过。Dashboard DOM 回归在每页 20 条的公开 HTTP 契约下复现并修复了权限面板故障，也验证了后续资料页被保留。真实本机原生服务与 Workerd/D1/R2 的官方 MCP 客户端完成接入助手投递、同键恢复、主助手可靠保存后 received、汇报用户与 processed，发信连接无法读信箱。
 
 两个运行时都通过真实 HTTP + DOM 的申请、审批、邀请领取、清除 URL 片段、个人空间登录、主助手连接预设和接入助手默认投递测试。直接读取隔离 D1 的匿名统计确认申请联系方式为密文。验收模拟协作角色，没有执行实际餐厅预订，也不宣称已验证 Muse 等第三方产品。
 
-脚本为 `examples/mcp-client/handoff.mjs`、`examples/mcp-client/onboarding-ui.mjs`，已加入原生与 Worker CI。源码预审基线为 8840a0a；最终 i18n 合并、线上发布与实际验收记录需在交付时补充。
+双轴评审基线为 8840a0a。评审后的失败测试覆盖两空间同时审批同一申请、同权限换连接后默认收件人重试、联系方式轮换后移除旧密钥、领取后空间加载失败，以及退出与邀请响应在同一回合完成。上述问题均先复现，再修复；前三项 Rust 与后三项中的两项 DOM 回归已通过。私密邀请与连接凭据只在原会话展示，领取后的个人凭据先显示，再加载空间。
+
+脚本为 `examples/mcp-client/handoff.mjs`、`examples/mcp-client/onboarding-ui.mjs`，已加入原生与 Worker CI；Worker 启动等待涵盖首次 Wasm 构建，超时明确报告失败。最终 i18n 合并、线上发布与实际验收记录需在交付时补充。

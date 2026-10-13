@@ -51,7 +51,7 @@ cargo run --release -- encrypt --data ./var
 
 命令逐页迁移对象及敏感字段。新密文先写入独立对象，元数据批次再切换引用；中断后可以重试。旧对象保留到清理操作执行，避免迁移中途破坏原内容。原生 `serve` 与 `encrypt` 通过数据目录运行锁互斥。
 
-Worker 迁移使用部署管理员 bearer 调用 `POST /admin/v0/maintenance/encrypt`。依次处理 `objects`、`messages`、`uploads`、`blobs`、`memory_items`，每次最多四条记录，根据 `has_more` 和 `next_cursor` 翻页：
+Worker 迁移使用部署管理员 bearer 调用 `POST /admin/v0/maintenance/encrypt`。依次处理 `objects`、`messages`、`uploads`、`blobs`、`memory_items`、`access_requests`，每次最多四条记录，根据 `has_more` 和 `next_cursor` 翻页。最后一类涵盖邀请申请的联系方式；全部处理完毕前保留旧密钥：
 
 ```json
 {"kind":"objects","dry_run":true,"limit":4,"cursor":null}

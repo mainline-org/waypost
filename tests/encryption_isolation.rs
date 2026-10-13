@@ -9,6 +9,90 @@ fn keys(active: &str) -> String {
 fn db(f: &Fixture) -> rusqlite::Connection {
     rusqlite::Connection::open(f.dir.path().join("metadata.sqlite")).unwrap()
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn contact_migration_allows_removing_the_previous_encryption_key() {
+    let mut f = Fixture::new().await;
+    f.app = f.app.with_encryption_keys(&keys("v1"), false).unwrap();
+    for id in ["first", "second"] {
+        call(
+            &f.app,
+            "POST",
+            "/admin/access-request",
+            "",
+            json!({"request_id":id,"email":format!("{id}@example.com")}),
+        )
+        .await;
+    }
+    f.app = f.app.with_encryption_keys(&keys("v2"), false).unwrap();
+    let path = "/admin/v0/maintenance/encrypt";
+    let preview = call(
+        &f.app,
+        "POST",
+        path,
+        ADMIN,
+        json!({"kind":"access_requests","dry_run":true,"limit":1}),
+    )
+    .await;
+    assert_eq!(preview["candidate_count"], 1);
+    assert_eq!(preview["has_more"], true);
+    let mut cursor = Value::Null;
+    loop {
+        let page = call(
+            &f.app,
+            "POST",
+            path,
+            ADMIN,
+            json!({"kind":"access_requests","dry_run":false,"limit":1,"cursor":cursor}),
+        )
+        .await;
+        assert_eq!(page["converted"], 1);
+        if page["has_more"] != true {
+            break;
+        }
+        cursor = page["next_cursor"].clone();
+    }
+    f.app = f
+        .app
+        .with_encryption_keys(
+            &json!({"active":"v2","keys":{"v2":"22".repeat(32)}}).to_string(),
+            false,
+        )
+        .unwrap();
+    let listed = call(
+        &f.app,
+        "POST",
+        "/admin/v0/access-requests",
+        ADMIN,
+        json!({}),
+    )
+    .await;
+    assert_eq!(listed["items"][0]["email"], "first@example.com");
+    assert_eq!(listed["items"][1]["email"], "second@example.com");
+    assert_eq!(
+        call(
+            &f.app,
+            "POST",
+            path,
+            ADMIN,
+            json!({"kind":"access_requests","dry_run":false})
+        )
+        .await["candidate_count"],
+        0
+    );
+    assert_eq!(
+        raw(
+            &f.app,
+            "POST",
+            path,
+            &f.writer_token,
+            json!({"kind":"access_requests","dry_run":false})
+        )
+        .await
+        .0,
+        401
+    );
+}
 async fn owner(f: &Fixture, space: &str) -> String {
     call(
         &f.app,

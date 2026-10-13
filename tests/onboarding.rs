@@ -43,6 +43,39 @@ async fn explicit_connection_default_delivers_to_primary_without_exposing_owner_
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn retry_keeps_the_first_reserved_recipient_after_changing_connection_default() {
+    let f = Fixture::new().await;
+    let path = format!("/admin/v0/spaces/{}/tokens", f.sid());
+    let mut body = json!({"request_id":"primary-default","actor_id":f.writer["actor_id"],"consumer_id":f.writer_consumer["consumer_id"],"scopes":["message.send"],"resource_grants":{"recipient_ids":[f.writer["actor_id"],f.space["default_actor_id"]]},"default_recipient_id":f.writer["actor_id"]});
+    let first = call(&f.app, "POST", &path, ADMIN, body.clone()).await;
+    let message = json!({"request_id":"durable-default","kind":"info","subject":"Result","body":{"text":"Keep the original destination"}});
+    let original = call(
+        &f.app,
+        "POST",
+        "/v0/messages",
+        first["token"].as_str().unwrap(),
+        message.clone(),
+    )
+    .await;
+    body["request_id"] = json!("owner-default");
+    body["default_recipient_id"] = f.space["default_actor_id"].clone();
+    let replacement = call(&f.app, "POST", &path, ADMIN, body).await;
+    assert_eq!(
+        call(
+            &f.app,
+            "POST",
+            "/v0/messages",
+            replacement["token"].as_str().unwrap(),
+            message
+        )
+        .await,
+        original
+    );
+    assert_eq!(f.writer_inbox().await["items"].as_array().unwrap().len(), 1);
+    assert!(f.inbox().await["items"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn choosing_primary_is_space_scoped_versioned_and_does_not_grant_permissions() {
     let f = Fixture::new().await;
     let path = format!("/admin/v0/spaces/{}/primary-assistant", f.sid());

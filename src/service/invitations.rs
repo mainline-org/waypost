@@ -60,6 +60,21 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let op = format!("admin.invitation.create:{sid}");
         let (key, fp) = admin_key(&body)?;
         if let Some(row) = self.admin_existing(&op, &key, &fp).await? {
+            let id = text(&row, "resource_id")?;
+            if self
+                .db
+                .query(Statement::new(
+                    "SELECT 1 AS valid FROM space_invitations WHERE space_id=? AND invitation_id=?",
+                    vec![sid.into(), id.into()],
+                ))
+                .await?
+                .is_empty()
+            {
+                return Err(Error::new(
+                    "REVISION_CONFLICT",
+                    "Invitation was not issued; use a new request.",
+                ));
+            }
             return Ok(
                 json!({"invitation_id":text(&row,"resource_id")?,"invite_token":null,"token_available":false}),
             );
@@ -90,7 +105,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let digest = Sha256::digest(raw.as_bytes()).to_vec();
         let now = self.clock.now_ms();
         let expires = now + ttl * 1000;
-        let guard = admin_guard(&op, &key, &iid);
+        let mut guard = admin_guard(&op, &key, &iid);
         let mut statements = vec![admin_reservation(
             &op,
             &key,
@@ -100,6 +115,23 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             None,
             now,
         )?];
+        if let Some(access_id) = &access_id {
+            let mut args = vec![
+                sid.into(),
+                iid.clone().into(),
+                access_id.clone().into(),
+                sid.into(),
+            ];
+            args.extend(guard.1.clone());
+            args.extend(vec![sid.into(), sid.into(), version.into()]);
+            statements.push(Statement::new(format!("UPDATE access_requests SET space_id=?,approval_nonce=? WHERE request_id=? AND (space_id IS NULL OR space_id=?) AND {} AND NOT EXISTS(SELECT 1 FROM space_admin_credentials c WHERE c.space_id=? AND c.revoked_at IS NULL) AND COALESCE((SELECT version FROM space_admin_credentials c WHERE c.space_id=?),0)=?",guard.0),args));
+            guard.0.push_str(" AND EXISTS(SELECT 1 FROM access_requests WHERE request_id=? AND space_id=? AND approval_nonce=?)");
+            guard.1.extend(vec![
+                access_id.clone().into(),
+                sid.into(),
+                iid.clone().into(),
+            ]);
+        }
         let mut args = vec![sid.into()];
         args.extend(guard.1.clone());
         statements.push(Statement::new(format!("UPDATE space_invitations SET state='revoked' WHERE space_id=? AND state='pending' AND {}",guard.0),args));
@@ -115,7 +147,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         args.extend(vec![sid.into(), sid.into(), version.into()]);
         statements.push(Statement::new(format!("INSERT INTO space_invitations(invitation_id,space_id,token_digest,owner_version,state,created_at,expires_at) SELECT ?,?,?,?,'pending',?,? WHERE {} AND NOT EXISTS(SELECT 1 FROM space_admin_credentials c WHERE c.space_id=? AND c.revoked_at IS NULL) AND COALESCE((SELECT version FROM space_admin_credentials c WHERE c.space_id=?),0)=?",guard.0),args));
         if let Some(access_id) = access_id {
-            statements.push(Statement::new("UPDATE access_requests SET status='issued',space_id=? WHERE request_id=? AND (space_id IS NULL OR space_id=?) AND EXISTS(SELECT 1 FROM space_invitations WHERE invitation_id=? AND state='pending')",vec![sid.into(),access_id.into(),sid.into(),iid.clone().into()]));
+            statements.push(Statement::new("UPDATE access_requests SET status='issued' WHERE request_id=? AND space_id=? AND approval_nonce=? AND EXISTS(SELECT 1 FROM space_invitations WHERE invitation_id=? AND state='pending')",vec![access_id.into(),sid.into(),iid.clone().into(),iid.clone().into()]));
         }
         self.db.batch(statements).await?;
         let own=self.db.query(Statement::new("SELECT invitation_id FROM space_invitations WHERE invitation_id=? AND token_digest=? AND state='pending'",vec![iid.clone().into(),digest.into()])).await?;
@@ -188,6 +220,125 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "waypost_admin={cookie}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=28800{secure}"
             ),
         ))
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod tests {
+    use super::*;
+    use crate::native::{FileStore, SqliteDb};
+    use std::cell::Cell;
+
+    // Hold both public requests after their pre-read, before either can commit.
+    struct ConcurrentReads {
+        db: SqliteDb,
+        arrived: Cell<usize>,
+    }
+    impl Database for ConcurrentReads {
+        async fn query(&self, statement: Statement) -> Result<Vec<Row>> {
+            let approval =
+                statement.sql == "SELECT space_id FROM access_requests WHERE request_id=?";
+            let rows = self.db.query(statement).await?;
+            if approval {
+                self.arrived.set(self.arrived.get() + 1);
+                while self.arrived.get() < 2 {
+                    tokio::task::yield_now().await;
+                }
+            }
+            Ok(rows)
+        }
+        async fn batch(&self, statements: Vec<Statement>) -> Result<Vec<Vec<Row>>> {
+            self.db.batch(statements).await
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn concurrent_approvals_bind_one_request_to_one_space() {
+        let dir = tempfile::tempdir().unwrap();
+        let admin = "test-only-concurrent-approval-secret";
+        let app = App::new(
+            ConcurrentReads {
+                db: SqliteDb::open(dir.path().join("metadata.sqlite")).unwrap(),
+                arrived: Cell::new(0),
+            },
+            FileStore::open(dir.path().join("objects")).unwrap(),
+            Config {
+                admin_secret: admin.into(),
+                public_origin: "https://example.com".into(),
+            },
+        );
+        let mut spaces = vec![];
+        for id in ["one", "two"] {
+            let response = app
+                .handle(Request::json(
+                    "POST",
+                    "/admin/v0/spaces",
+                    admin,
+                    json!({"request_id":id,"display_name":id}),
+                ))
+                .await;
+            assert_eq!(response.status, 200);
+            let value: Value = serde_json::from_slice(&response.body).unwrap();
+            spaces.push(value["data"]["space_id"].as_str().unwrap().to_owned());
+        }
+        assert_eq!(
+            app.handle(Request::json(
+                "POST",
+                "/admin/access-request",
+                "",
+                json!({"request_id":"race","email":"race@example.com"})
+            ))
+            .await
+            .status,
+            200
+        );
+        let (one, two) = futures_util::join!(
+            app.handle(Request::json(
+                "POST",
+                &format!("/admin/v0/spaces/{}/invitations", spaces[0]),
+                admin,
+                json!({"request_id":"approve-one","access_request_id":"race"})
+            )),
+            app.handle(Request::json(
+                "POST",
+                &format!("/admin/v0/spaces/{}/invitations", spaces[1]),
+                admin,
+                json!({"request_id":"approve-two","access_request_id":"race"})
+            )),
+        );
+        let mut statuses = [one.status, two.status];
+        statuses.sort();
+        assert_eq!(statuses, [200, 409]);
+        let winner: Value = serde_json::from_slice(if one.status == 200 {
+            &one.body
+        } else {
+            &two.body
+        })
+        .unwrap();
+        let listed = app
+            .handle(Request::json(
+                "POST",
+                "/admin/v0/access-requests",
+                admin,
+                json!({}),
+            ))
+            .await;
+        let listed: Value = serde_json::from_slice(&listed.body).unwrap();
+        assert_eq!(
+            listed["data"]["items"][0]["space_id"],
+            winner["data"]["space_id"]
+        );
+        assert_eq!(
+            app.handle(Request::json(
+                "POST",
+                "/admin/invitation",
+                "",
+                json!({"invite_token":winner["data"]["invite_token"]})
+            ))
+            .await
+            .status,
+            200
+        );
     }
 }
 

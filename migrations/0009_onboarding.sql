@@ -23,6 +23,6 @@ CREATE INDEX space_invitations_pending ON space_invitations(space_id,state,expir
 CREATE TABLE access_requests (
  request_id TEXT PRIMARY KEY,contact TEXT NOT NULL,created_at INTEGER NOT NULL,
  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','issued')),
- space_id TEXT REFERENCES spaces(space_id)
+ space_id TEXT REFERENCES spaces(space_id),approval_nonce TEXT
 );
 CREATE INDEX access_requests_status ON access_requests(status,created_at,request_id);
