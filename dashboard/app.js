@@ -219,7 +219,7 @@ function openOnboarding() {
     return createAgent(task.name);
   }
   const form = el('form'), label = el('label', '给助手取个名字'), input = el('input');
-  input.required = true; input.maxLength = 100; input.placeholder = '例如：资料助手'; label.append(input);
+  input.required = true; input.maxLength = 100; input.placeholder = '例如：Muse 或 Instinct'; label.append(input);
   const submit = el('button', '生成连接信息'); submit.type = 'submit';
   form.append(label, el('p', '这份连接只允许向你发信。收信、附件和资料权限，可以在接入后按需授权。'), submit);
   form.addEventListener('submit', event => {event.preventDefault(); if (input.value.trim()) busy(submit, () => createAgent(input.value.trim()));});
