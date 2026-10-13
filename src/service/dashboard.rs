@@ -311,7 +311,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "item_id,item_type,resource_id,resource_version,producer_id,thread_id,committed_at,CAST(space_sequence AS TEXT) AS visible_seq",
                 "producer_id",
             ),
-            "messages" => (
+            "messages" | "inbox" => (
                 "messages",
                 "message_id",
                 "committed_at",
@@ -343,7 +343,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "tokens",
                 "token_id",
                 "created_at",
-                "token_id,actor_id,consumer_id,expires_at,revoked_at,created_at",
+                "token_id,actor_id,consumer_id,expires_at,revoked_at,created_at,(SELECT json_group_array(scope) FROM token_scopes ts WHERE ts.token_id=tokens.token_id) AS scopes_json",
                 "actor_id",
             ),
             "blobs" => (
@@ -368,6 +368,9 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "SELECT {projection},{sort} AS sort_at,{id} AS sort_id FROM {table} WHERE space_id=?"
         );
         let mut args = vec![sid.into()];
+        if kind == "inbox" {
+            sql.push_str(" AND EXISTS(SELECT 1 FROM message_recipients r JOIN spaces s ON s.space_id=r.space_id AND s.default_actor_id=r.actor_id WHERE r.space_id=messages.space_id AND r.message_id=messages.message_id)");
+        }
         if let Some(actor) = &actor {
             if kind == "receipts" {
                 sql.push_str(" AND EXISTS(SELECT 1 FROM consumers c WHERE c.space_id=receipts.space_id AND c.consumer_id=receipts.consumer_id AND c.actor_id=?)");
@@ -420,7 +423,16 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     o.remove("sort_at");
                     o.remove("sort_id");
                 }
-                if kind == "messages" {
+                if kind == "tokens" {
+                    v["scopes"] = crate::json::parse(
+                        text(r, "scopes_json")?.as_bytes(),
+                        self.limits.max_json_bytes,
+                    )?;
+                    v.as_object_mut()
+                        .ok_or_else(Error::storage)?
+                        .remove("scopes_json");
+                }
+                if kind == "messages" || kind == "inbox" {
                     v["subject"] = json!(self.open_field(
                         sid,
                         &format!("message/{}/subject", text(r, "message_id")?),
