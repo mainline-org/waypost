@@ -23,14 +23,14 @@
     <h1>你的助手信箱。</h1>
     <p class="lede">助手的进展和结果，都送到你这里。</p>
     <form id="login-form">
-      <label>用户登录凭据
+      <label>登录密钥
         <input id="secret" type="password" autocomplete="current-password" required>
       </label>
       <button>打开信箱</button>
     </form>
     <button id="request-access" type="button" class="secondary">申请邀请</button>
     <p id="login-error" class="notice notice-inline" role="status"></p>
-    <p class="fine">托管服务的登录凭据由我们发放。自己运行时，按运行说明从数据目录取得。助手使用另外签发的连接凭据。</p>
+    <p class="fine">使用领取邀请时保存的登录密钥，进入自己的信箱。助手的连接信息在登录后单独配置。自己运行时，用数据目录里的服务管理密钥进入。</p>
   </div>
 </div>
 
@@ -42,12 +42,10 @@
       <span>waypost<span class="brand-dot">.</span></span>
     </a>
 
-    <label class="space">我的空间
+    <div class="sidebar-scroll">
+    <label class="space">当前信箱
       <select id="space" aria-label="选择工作空间"></select>
     </label>
-    <button id="owner-credential" type="button" class="secondary" hidden>用户登录凭据</button>
-    <button id="new-space" class="secondary">＋ 新建空间</button>
-    <button id="invite-user" type="button" class="secondary" hidden>邀请使用</button>
 
     <nav aria-label="主要功能">
       <button data-tab="inbox">信箱</button>
@@ -56,7 +54,7 @@
     </nav>
 
     <details id="management">
-      <summary>管理</summary>
+      <summary>记录与隐私</summary>
       <nav aria-label="管理功能">
         <button data-tab="messages">全部消息</button>
         <button data-tab="feed">活动记录</button>
@@ -64,12 +62,26 @@
         <button data-tab="tokens">连接凭据</button>
         <button data-tab="submissions">提交状态</button>
         <button data-tab="receipts">处理回执</button>
-        <button id="access-requests-tab" data-tab="access" hidden>邀请请求</button>
       </nav>
     </details>
 
+    <details id="service-management" hidden>
+      <summary>服务管理</summary>
+      <p class="fine">给其他人提供独立的信箱。这里的操作只有服务运行者可用。</p>
+      <div class="service-actions">
+        <button id="invite-user" type="button" class="secondary" hidden>邀请新用户</button>
+        <button id="new-space" type="button" class="secondary" hidden>创建用户空间</button>
+        <button id="owner-credential" type="button" class="secondary" hidden>管理当前空间登录</button>
+      </div>
+      <nav aria-label="服务管理">
+        <button id="access-requests-tab" data-tab="access" hidden>使用申请</button>
+      </nav>
+    </details>
+    </div>
+
     <div class="aside-bottom">
       <p class="fine">自己的空间，自己的助手。</p>
+      <span id="operator-label" class="fine" hidden>当前以服务运行者身份登录</span>
       <button id="logout" class="secondary">退出登录</button>
     </div>
   </aside>

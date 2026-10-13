@@ -166,6 +166,12 @@ label { display: grid; gap: 7px; margin: 14px 0; color: var(--muted); }
 #app[hidden], #login[hidden] { display: none; }
 
 aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -174,7 +180,9 @@ aside {
   border-right: 1px solid var(--border);
   background: var(--panel);
 }
-aside .brand { margin-bottom: 28px; }
+aside .brand { margin-bottom: 28px; flex-shrink: 0; }
+.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.space select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .space { margin: 0 0 10px; }
 
 nav { display: grid; gap: 2px; margin-top: 24px; }
@@ -188,12 +196,17 @@ nav button {
 nav button:hover { background: var(--bg); color: var(--text); }
 nav button.active { background: var(--tint); color: var(--accent); font-weight: 500; }
 
-#management { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
+#management, #service-management { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
 summary { cursor: pointer; color: var(--muted); }
-#management summary { font-size: 13px; }
-#management nav { margin-top: 10px; }
+#management summary, #service-management summary { font-size: 13px; }
+#management nav, #service-management nav { margin-top: 10px; }
+.service-actions { display: grid; gap: 8px; }
+.service-actions button { padding: 9px 12px; white-space: normal; }
 
-.aside-bottom { display: grid; gap: 10px; margin-top: auto; padding-top: 36px; }
+.aside-bottom { display: grid; flex-shrink: 0; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.aside-bottom p { margin: 0; }
+.role-guide { display: grid; gap: 10px; padding: 22px 24px; background: var(--tint); border: 1px solid var(--tint-line); border-radius: 18px; }
+.role-guide p { margin: 0; }
 
 main { flex: 1; min-width: 0; max-width: 1450px; padding: 44px 48px; }
 
@@ -374,23 +387,28 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.2); backdrop-filter: blur(3px); }
 @media (max-width: 800px) {
   #app { display: block; }
   aside {
+    position: static;
+    height: auto;
     width: auto;
     padding: 18px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
+  .sidebar-scroll { overflow: visible; flex: none; }
   aside .brand { margin-bottom: 12px; }
   .space { margin: 8px 0 10px; }
   nav { display: flex; overflow: auto; margin-top: 14px; gap: 4px; }
   nav button { white-space: nowrap; }
   .grid { grid-template-columns: 1fr; }
-  #management { margin-top: 12px; padding-top: 12px; }
+  #management, #service-management { margin-top: 12px; padding-top: 12px; }
+  #management nav { flex-wrap: wrap; }
   .aside-bottom {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-top: 14px;
     padding-top: 0;
+    flex-wrap: wrap;
   }
   main { padding: 26px 18px; }
   header { align-items: flex-start; flex-direction: column; gap: 16px; }

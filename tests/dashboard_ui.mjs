@@ -11,6 +11,35 @@ const fixtures = {
 };
 const wait = async predicate => {for(let i=0;i<100;i++){if(predicate()) return; await new Promise(r=>setTimeout(r,10));} throw new Error('UI did not reach expected state');};
 
+test('viewing space sign-in explains the target and waits for an explicit reset', async () => {
+  const dom = new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'});
+  const {window:w}=dom; const d=w.document; const writes=[];
+  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
+  w.fetch=async(path,options={})=>{
+    const body=options.body?JSON.parse(options.body):{}; let data;
+    if(path==='/admin/session') data={csrf_token:'test',operator:true};
+    else if(path==='/admin/v0/registry') data={items:fixtures[body.kind],has_more:false};
+    else if(path.endsWith('/primary-assistant')) data={revision:0,primary_assistant:null};
+    else if(path.endsWith('/owner-credential')) {if(options.method==='POST'){writes.push(body);data={credential:'wp_user_new'};}else data={version:1,active:true};}
+    else data={items:[],has_more:false};
+    return {ok:true,status:200,json:async()=>({ok:true,data})};
+  };
+  try {
+    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await wait(()=>!d.querySelector('#app').hidden && d.querySelector('#content').children.length);
+    d.querySelector('#owner-credential').click();await wait(()=>d.querySelector('#detail-body form'));
+    assert.equal(writes.length,0);
+    assert(d.querySelector('#detail-body').textContent.includes('旧登录密钥和已登录会话立即失效'));
+    assert(d.querySelector('#detail-body').textContent.includes('One'));
+    d.querySelector('#detail-body form').dispatchEvent(new w.Event('submit',{cancelable:true}));
+    await wait(()=>d.querySelector('#detail-body pre'));
+    assert.deepEqual(writes,[{expected_version:1}]);
+    assert.equal(d.querySelector('#detail-body pre').textContent,'wp_user_new');
+  } finally {w.close();}
+});
+
 test('a redeemed personal credential remains visible when space loading fails', async () => {
   const dom = new JSDOM(readFileSync(new URL('../dashboard/index.html', import.meta.url),'utf8'),{url:'https://service.example/dashboard#invite=wpi_test',runScripts:'outside-only'});
   const {window:w}=dom;
