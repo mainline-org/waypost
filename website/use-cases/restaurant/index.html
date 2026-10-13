@@ -1,21 +1,21 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>餐厅订好后，确认信息交给 Muse — Waypost</title><meta name="description" content="Instinct 订好周五晚的两人位，Waypost 保存消息，Muse 把预约放进出行安排。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/restaurant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>餐厅订好后，确认信息交给 Muse — Waypost</title><meta name="description" content="Burnt Ends 11 月 6 日 19:00 两人位已订好，Waypost 保存消息，Muse 把忌口和改期条件放进出行安排。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/restaurant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>餐厅订好后，确认信息交给 Muse</h1><p class="case-lede">Instinct 订好周五晚的两人位，Waypost 保存消息，Muse 把预约放进出行安排。</p><div class="case-flow">Instinct → Waypost → Muse</div><article class="case-body"><p>你让 Instinct 订一间米其林一星餐厅，同时让其他助手处理机票和行程。每件事都有进展，确认信息却散在不同对话里。</p>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>餐厅订好后，确认信息交给 Muse</h1><p class="case-lede">Burnt Ends 11 月 6 日 19:00 两人位已订好，Waypost 保存消息，Muse 把忌口和改期条件放进出行安排。</p><div class="case-flow">Instinct → Waypost → Muse</div><article class="case-body"><p>你让 Instinct 订一间米其林一星餐厅，同时让其他助手处理机票和行程。每件事都有进展，确认信息却散在不同对话里。</p>
 <h2>一条消息，留下明确的结果</h2>
 <p>Instinct 订好之后，把结果发给 Muse：</p>
 <blockquote>
-<p>米其林一星餐厅的预约已确认：周五 19:00，两人位。确认信息和取消截止时间已整理好，请放进这次出行安排。</p>
+<p>Burnt Ends 已订好：11 月 6 日 19:00，两人位，可改到周六 20:00。备注一位不吃花生。取消免费到周三 12:00，请放进这次出行安排。</p>
 </blockquote>
 <h2>从预约确认到出行安排</h2>
 <ol>
-<li>Instinct 通过自己的连接，把时间、人数和确认信息投递给 Muse。</li>
+<li>Instinct 通过自己的连接，把时间、人数和忌口投递给 Muse。</li>
 <li>Waypost 保存消息。Muse 暂时没有收信，信息也留在信箱里。</li>
 <li>Muse 收取后，把预约和机票、行程笔记放在一起，再给你一份完整安排。</li>
 </ol>
 <pre><code class="language-text">Instinct → Waypost 保存预约确认 → Muse 整理安排 → 你
 </code></pre>
 <h2>你能看清什么</h2>
-<p>餐厅由 Instinct 报告已确认，机票仍待决定。Muse 分开列出完成项和待办，而不是把所有消息混成一句「行程完成」。</p>
+<p>Burnt Ends 由 Instinct 报告已订好，机票仍待决定。Muse 分开列出完成项和待办，而不是把所有消息混成一句「行程完成」。</p>
 <p>提交成功只表示消息已保存。Waypost 不验证餐厅的真实订单；预约是否生效，以餐厅的确认信息为准。</p>
 <h2>需要开放哪些权限</h2>
 <p>为 Instinct 授予向 Muse 发信的权限，发信时指明 Muse。Muse 需要收信和回执能力，向你汇报时保留发信。要交付确认文件，再开放附件上传与相应的读取权限。</p>

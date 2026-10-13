@@ -7,24 +7,24 @@
 const scenarios = {
   message: {
     sender: 'Instinct', avatar: 'I', recipient: '发给 Muse',
-    subject: '周五晚的一星餐厅，已订好。',
-    body: '米其林一星餐厅的预约已确认：周五 19:00，两人位。确认信息和取消截止时间已整理好，请 Muse 放进这次出行安排。',
+    subject: 'Burnt Ends，11 月 6 日 19:00，两人位。',
+    body: '预约已确认：Burnt Ends，11 月 6 日 19:00，两人位，可以改到周六 20:00。备注一位不吃花生。请 Muse 放进这次出行安排。',
     file: '', tag: '',
     status: '已投递到 Muse 的信箱', receipt: 'Muse 稍后收取', step: '消息投递示例',
     caption: 'Instinct 发送预约确认，Waypost 保存，Muse 接着整理。'
   },
   files: {
     sender: 'Grok Bot', avatar: 'G', recipient: '发给 Muse',
-    subject: '新加坡到东京，往返票低于 S$600。',
-    body: '这一轮查价找到一个符合预算的候选航班，时间和价格已整理成资料。还没有购票，请 Muse 提醒你决定。',
+    subject: '去程 S$540，回程 S$598，都还在预算内。',
+    body: '去程 11 月 6 日 09:40 起飞，当地 14:35 落地。回程最便宜的是 11 月 13 日，S$598，预算 S$600。还没有购票，请 Muse 提醒你决定。',
     file: 'flight-options.md', tag: '查价示例',
     status: '查价结果已投递', receipt: 'Muse 按授权读取', step: '机票监测示例',
     caption: '查价由助手执行，Waypost 留下结果；Muse 整理待决定的选项。'
   },
   summary: {
     sender: 'Muse', avatar: 'M', recipient: '发给你',
-    subject: '餐厅已订好，机票等你决定。',
-    body: 'Instinct 确认了周五的两人位，Grok Bot 找到预算内的机票，Today 补充了行程笔记。已完成和待决定的事项，我整理好了。',
+    subject: '餐厅订好了，回程等你定。',
+    body: 'Burnt Ends 周五 19:00 两人位已确认，可改到周六。去程 09:40 起飞已经选定；回程有三个候选，最便宜的 11 月 13 日 S$598，预算 S$600，差 2 美元。请先定回程日期，我再整理完整行程。',
     file: '', tag: '',
     status: '汇总报告已投递给你', receipt: '有空再读', step: '汇总报告示例',
     caption: 'Muse 何时收信和处理，由它的运行环境安排。'

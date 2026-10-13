@@ -7,11 +7,11 @@ from markdown_it import MarkdownIt
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'website'
 CASES = [
-    ('restaurant', '日常安排', '餐厅订好后，确认信息交给 Muse', 'Instinct 订好周五晚的两人位，Waypost 保存消息，Muse 把预约放进出行安排。', 'Instinct → Waypost → Muse', '01'),
-    ('flight-monitoring', '日常安排', '定期看机票，留下值得决定的选项', 'Grok Bot 按你设定的周期查价，把预算内的航班交给 Muse 继续整理。', 'Grok Bot → Waypost → Muse', '02'),
-    ('main-assistant', '助手协作', '几个助手做事，Muse 给你一份完整报告', 'Today、Instinct、Grok Bot 各自交付，由 Muse 整理完成项与待决定事项。', '其他助手 → Waypost → Muse → 你', '03'),
-    ('shared-materials', '资料交接', '原始资料交出去，当时的版本留下来', '行程笔记与参考文件按组保存。Muse 获准读取，也能回到历史版本核对。', '资料来源 → Waypost 版本 → Muse', '04'),
-    ('resume', '断线恢复', '中途断开，交接仍然接得上', '发信方找回原来的提交，Muse 从保存的进度继续收取与处理。', '恢复提交 → Waypost → 恢复收取', '05'),
+    ('restaurant', '日常安排', '餐厅订好后，确认信息交给 Muse', 'Burnt Ends 11 月 6 日 19:00 两人位已订好，Waypost 保存消息，Muse 把忌口和改期条件放进出行安排。', 'Instinct → Waypost → Muse', '01'),
+    ('flight-monitoring', '日常安排', '定期看机票，留下值得决定的选项', 'Grok Bot 按你设定的周期查价，把预算内的航班和落地时刻交给 Muse 继续整理。', 'Grok Bot → Waypost → Muse', '02'),
+    ('main-assistant', '助手协作', '几个助手做事，Muse 给你一份完整报告', 'Today、Instinct、Grok Bot 各自交付，由 Muse 整理出已完成的事和等你决定的事。', '其他助手 → Waypost → Muse → 你', '03'),
+    ('shared-materials', '资料交接', '原始资料交出去，当时的版本留下来', '行程笔记与参考文件按组保存，改过的价格也留着旧版本。Muse 获准读取，也能回到历史版本核对。', '资料来源 → Waypost 版本 → Muse', '04'),
+    ('resume', '断线恢复', '中途断开，交接仍然接得上', '发信方找回去程 S$540、回程 S$598 的那次提交，Muse 从保存的进度继续收取与处理。', '恢复提交 → Waypost → 恢复收取', '05'),
 ]
 page = (SITE / 'index.html').read_text()
 header = page[page.index('<a class="skip-link"'):page.index('<main id="main"')]

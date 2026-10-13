@@ -1,10 +1,10 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>定期看机票，留下值得决定的选项 — Waypost</title><meta name="description" content="Grok Bot 按你设定的周期查价，把预算内的航班交给 Muse 继续整理。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>定期看机票，留下值得决定的选项 — Waypost</title><meta name="description" content="Grok Bot 按你设定的周期查价，把预算内的航班和落地时刻交给 Muse 继续整理。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>定期看机票，留下值得决定的选项</h1><p class="case-lede">Grok Bot 按你设定的周期查价，把预算内的航班交给 Muse 继续整理。</p><div class="case-flow">Grok Bot → Waypost → Muse</div><article class="case-body"><p>你想关注新加坡到东京的往返机票，希望价格在预算以内。Grok Bot 定期查价，Muse 把航班选项和已经确定的安排放在一起。</p>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>定期看机票，留下值得决定的选项</h1><p class="case-lede">Grok Bot 按你设定的周期查价，把预算内的航班和落地时刻交给 Muse 继续整理。</p><div class="case-flow">Grok Bot → Waypost → Muse</div><article class="case-body"><p>你想关注新加坡到东京的往返机票，希望价格在预算以内。Grok Bot 定期查价，Muse 把航班选项和已经确定的安排放在一起。</p>
 <h2>每轮查价，都有一份结果</h2>
 <p>Grok Bot 发现候选航班后，向 Muse 发信：</p>
 <blockquote>
-<p>新加坡到东京的往返票低于 S$600。时间和价格已整理成资料，还没有购票，请记录并提醒我决定。</p>
+<p>去程 11 月 6 日 09:40 起飞，当地 14:35 落地，S$540。回程最便宜的是 11 月 13 日，S$598，预算 S$600。还没有购票，请记录并提醒我决定。</p>
 </blockquote>
 <h2>查价、交接、整理</h2>
 <ol>
@@ -16,7 +16,7 @@
 </code></pre>
 <h2>不必每次重新找回对话</h2>
 <p>每份结果都带着来源和时间。Muse 可以沿着已收到的消息继续整理，你也能在全部消息里核对原始内容。</p>
-<p>路线、价格和提醒门槛都是示例，真实票价以查询时的供应商信息为准。查询周期由助手的运行环境安排；Waypost 保存消息与资料，不定时查价，不购票，也不验证成交结果。</p>
+<p>票价、路线和提醒门槛都是示例，真实价格以查询时的供应商信息为准。查询周期由助手的运行环境安排；Waypost 保存消息与资料，不定时查价，不购票，也不验证成交结果。</p>
 <h2>需要开放哪些权限</h2>
 <p>Grok Bot 需要向 Muse 发信的权限。Muse 需要收信权限；附带文件时，再授予上传和读取资料的能力。价格提醒不包含购买权限。</p>
 <p>从<a href="/guide/#main-assistant">接入步骤</a>开始，把一轮真实查询结果发进信箱。</p>
