@@ -9,7 +9,7 @@ Waypost 的 Cloudflare 部署使用独立 Worker、D1 和私有 R2。运行参�
 - 存活探测：`GET /health`
 - 存储就绪：`GET /ready`，需要管理员 bearer
 
-此实例由管理员创建空间与签发 Agent 凭据，没有匿名写入或公开注册。Agent 使用自己的限权凭据，不能使用管理凭据作为普通连接。
+新用户通过 [申请邀请](https://waypost-production.christopherwuy.workers.dev/dashboard#request-access) 留下联系方式。运行者审核后私密送达一次性邀请，领取后获得独立空间和个人登录凭据。助手使用自己的限权连接，不能使用管理凭据作为普通连接。
 
 ## 配置与发布
 
@@ -45,13 +45,13 @@ wrangler deploy --config wrangler.production.toml --secrets-file .env.production
 
 | 路径 | 限速 |
 |---|---:|
-| POST `/admin/session` | 每 IP 每 60 秒 10 次 |
+| 登录、申请与领取：POST `/admin/session`、`/admin/access-request`、`/admin/invitation` | 每 IP 每 60 秒 10 次 |
 | 其他动态路径，包含会话检查和 MCP / HTTP API | 每 IP 每 60 秒 300 次 |
 | 公开静态 GET 与 GET `/health` | 不使用应用限速绑定 |
 
 超限返回 `429 RATE_LIMITED` 和 `Retry-After`。计数使用 IP 摘要，服务不在计数键中保存原 IP。Cloudflare 的计数按位置执行且为近似限制，不能视为全局严格配额或账单上限。[Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
 
-`/health` 表示请求处理可用；`/ready` 同时验证六个迁移和 R2 读取连接，且返回明确的 environment。实际上传、封存及下载还应通过完整示例检查。
+`/health` 表示请求处理可用；`/ready` 同时验证当前九个迁移和 R2 读取连接，且返回明确的 environment。实际上传、封存及下载还应通过完整示例检查。
 
 请求大小、Blob、附件、集合和分页上限仍采用 [Worker profile](deployment.md#cloudflare-容量与费用)。服务通过 `waypost_describe` 返回实际值。应用限速不替代账户日用量、CPU、数据库及存储计划限制；部署不会自动升级账户计划。
 
@@ -99,8 +99,18 @@ wrangler rollback <previous-version-id> --config wrangler.production.toml
 
 ## 加密与用户隔离版本升级
 
-此分支新增服务端 HPKE 内容加密、用户空间管理凭据和迁移 `0007` / `0008`。上文首次部署的六迁移版本是历史记录；本次安全改进尚未发布到该生产入口。
+服务端 HPKE 内容加密、用户空间管理凭据和迁移 `0007` / `0008` 已在生产启用。本次接入工作开始时，线上就绪检查已确认八迁移版本；上文六迁移版本保留为首次交付记录。
 
-更新前备份 D1/R2 与密钥，配置私密 `WAYPOST_ENCRYPTION_KEYS`（推荐同时配置独立 `WAYPOST_CURSOR_SECRET`），应用全部八个迁移，再按 [安全说明](security.md) 迁移旧内容。生产 Worker 缺少加密 keyring 会拒绝请求。若过渡期间临时允许旧明文读取，完成迁移后关闭 `ALLOW_LEGACY_PLAINTEXT` 并清理旧对象。
+从旧版本升级前备份 D1/R2 与密钥，配置私密 `WAYPOST_ENCRYPTION_KEYS`（推荐同时配置独立 `WAYPOST_CURSOR_SECRET`），应用全部迁移，再按 [安全说明](security.md) 迁移旧内容。生产 Worker 缺少加密 keyring 会拒绝请求。若过渡期间临时允许旧明文读取，完成迁移后关闭 `ALLOW_LEGACY_PLAINTEXT` 并清理旧对象。
 
 密文与字段迁移后，旧明文版本不能直接读取新数据。回滚应匹配代码、数据库、对象和密钥的备份版本；不要直接把旧 Worker 覆盖到已经迁移的存储上。此次更新改变游标格式，客户端需重新读取并按 item ID 去重。
+
+## 邀请与主助手上线（2026-10-13）
+
+代码已通过 PR [#6](https://github.com/mainline-org/waypost/pull/6) 合并到 main，提交 `9d989ff`。Worker Version：`35877fca-1f73-4eb8-8cfa-7085c70728af`，就绪检查返回 `schema_revision: 9`。
+
+上线前保存了完整 D1 导出、恢复点、旧 Worker 版本与私密配置。迁移 `0009` 添加主助手、连接默认收件人、邀请和申请字段，不改写 R2；发布保留现有加密 keyring。D1 与配置备份不替代完整 R2 备份。
+
+真实 HTTPS 入口通过健康、安全头、D1/R2、Origin、CSRF 与退出失效检查。标准 MCP 客户端完成接入助手投递、同请求恢复、主助手可靠保存后确认、向用户汇报与 processed；只有发信能力的连接被拒绝读取信箱。真实 HTTP + DOM 完成申请、审批、一次性领取、个人空间、主助手连接预设与默认投递验证。
+
+验收使用独立示例空间模拟助手角色，没有调用真实 Muse 产品或执行餐厅订单。当前邀请通过私密渠道手动送达，不自动发送邮件。

@@ -2,9 +2,9 @@
 
 静态 HTML/CSS/JavaScript 网站，独立发布到 Vercel，不上传 Rust 服务、运行配置或私密资料。
 
-- `/`：「你的助手信箱」介绍主页，以及结果投递、资料交接、Muse 汇总三个可切换示例。
+- `/`：「你的助手信箱」介绍主页，以及结果投递、资料交接、主助手汇总三个可切换示例。Muse 仅作为示例。
 - `/guide/`：用户使用指南。
-- `/use-cases/`：五个配置示例，展示餐厅预约、机票查价、Muse 汇总、资料版本与恢复。
+- `/use-cases/`：五个配置示例，展示餐厅预约、机票查价、主助手汇总、资料版本与恢复。
 - `/privacy/`：数据与隐私保护范围。
 - `/rfc/`：三个 RFC、性质计划和配套实现文档的完整网页，保留原文下载与章节目录。
 
@@ -22,7 +22,7 @@
 - Vercel 推荐 CNAME：`waypost` → `140761196a2525c6.vercel-dns-017.com`，仅 DNS。
 - TXT 验证名称为 `_vercel`；值应从 Vercel 当前项目域名验证结果获取，保留已有 TXT 后另行添加。
 
-线上已检查三页、资源 MIME 类型和 CSP 等响应头，以及 `.env.local`、`.vercel/project.json` 和 `README.md` 不对外提供。当前 Browser 未连接，未进行浏览器视口与交互视觉检查。
+主页使用「主助手／接入助手」说明协作角色。申请入口连接到 Cloudflare 的 `/dashboard#request-access`，已有用户连接到 `/dashboard`；介绍网站不接收登录凭据或邀请令牌。当前 Browser 未连接，未进行浏览器视口与交互视觉检查。
 
 ## 更新 RFC 页面
 

@@ -51,7 +51,7 @@ cargo run --release -- encrypt --data ./var
 
 命令逐页迁移对象及敏感字段。新密文先写入独立对象，元数据批次再切换引用；中断后可以重试。旧对象保留到清理操作执行，避免迁移中途破坏原内容。原生 `serve` 与 `encrypt` 通过数据目录运行锁互斥。
 
-Worker 迁移使用部署管理员 bearer 调用 `POST /admin/v0/maintenance/encrypt`。依次处理 `objects`、`messages`、`uploads`、`blobs`、`memory_items`，每次最多四条记录，根据 `has_more` 和 `next_cursor` 翻页：
+Worker 迁移使用部署管理员 bearer 调用 `POST /admin/v0/maintenance/encrypt`。依次处理 `objects`、`messages`、`uploads`、`blobs`、`memory_items`、`access_requests`，每次最多四条记录，根据 `has_more` 和 `next_cursor` 翻页。最后一类涵盖邀请申请的联系方式；全部处理完毕前保留旧密钥：
 
 ```json
 {"kind":"objects","dry_run":true,"limit":4,"cursor":null}
@@ -82,3 +82,11 @@ Worker 迁移使用部署管理员 bearer 调用 `POST /admin/v0/maintenance/enc
 认证一次查询读取身份、授权和过滤快照；Agent 发布仍在提交批次内检查 token/Actor/Consumer 的有效版本。必须新增的行使用严格 INSERT，幂等占位只忽略指定唯一键，约束错误使整个 SQLite/D1 批次回滚。解码、配置、完整性与语句错误返回不可重试的 `INTERNAL_ERROR`；暂时的存储故障返回 `STORAGE_UNAVAILABLE`。
 
 原生存储以单线程单连接 SQLite 运行，同步 fsync 会阻塞该 executor。原生对象路径按上限缓冲。未启用加密时 Worker 专化使用 R2 流式 I/O；启用 HPKE 时使用经过大小限制的缓冲加解密，Worker 单对象上限 256 KiB。ObjectStore trait 本身是缓冲字节契约，不承诺通用流式实现。
+
+## 邀请与默认收件人
+
+迁移 `0009_onboarding.sql` 加入一次性邀请、使用申请、主助手选择及连接默认收件人。邀请与个人登录凭据分别使用；数据库只保存邀请令牌摘要，领取的状态变化、个人凭据签发与会话创建在同一批次提交。邀请受期限、撤销状态和空间所有者凭据版本约束，重复领取失败。
+
+使用申请的联系方式通过独立的系统加密上下文保存，只有全局运行者可以读取。匿名接口与登录、邀请领取共用登录限速分类，申请队列最多保留 1000 条记录。当前不自动发邮件，邀请链接需私密送达；原始令牌位于 fragment，页面启动即清除，不进入 URL 查询参数或服务请求日志。
+
+主助手是用户选择的协作角色，不赋予全局管理员权限。连接默认收件人必须在对应资源授权中，数据库触发器阻止把默认收件人绑定到其他空间。旧连接的默认行为不变。
