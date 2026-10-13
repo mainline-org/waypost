@@ -38,7 +38,7 @@ try{
  const inviteUrl=d.querySelector('#detail-body pre').textContent;
  assert(inviteUrl.includes('#invite='));assert.equal(new URL(inviteUrl).origin,origin);assert(!operator.sessionStorage.getItem('waypost-pending-creation'));
  const personal=page(new URL(inviteUrl).hash),p=personal.document;
- await wait(()=>!p.querySelector('#app').hidden&&p.querySelector('#detail-body pre'));
+ await wait(()=>!p.querySelector('#app').hidden&&p.querySelector('#detail-body pre')&&!p.querySelector('#add-agent').hidden);
  assert.equal(personal.location.hash,'');assert.equal(p.querySelector('#new-space').hidden,true);assert.equal(p.querySelector('#invite-user').hidden,true);
  const loginCredential=p.querySelector('#detail-body pre').textContent;assert(loginCredential.startsWith('wp_user_'));
  p.querySelector('#close-detail').click();assert.equal(p.querySelector('#detail-body').textContent,'');

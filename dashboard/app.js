@@ -30,7 +30,7 @@ async function api(path, method = 'GET', body) {
   return result.data;
 }
 function showLogin() {authEpoch++; loadEpoch++; primaryState = {revision: 0, primary_assistant: null}; operator = false; csrf = ''; spaces = []; actors = []; sid = ''; tab = 'inbox'; finishCreation(); $('#detail').close(); $('#detail-title').textContent = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
-async function entered(session) {authEpoch++; primaryState = {revision: 0, primary_assistant: null}; pageSize = Math.max(1, Math.min(20, session.limits?.max_page_size || 20)); operator = session.operator; $('#invite-user').hidden = !operator; $('#access-requests-tab').hidden = !operator; csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
+async function entered(session) {authEpoch++; primaryState = {revision: 0, primary_assistant: null}; spaces = []; actors = []; sid = ''; $('#space').replaceChildren(); $('#content').replaceChildren(); $('#add-agent').hidden = true; pageSize = Math.max(1, Math.min(20, session.limits?.max_page_size || 20)); operator = session.operator; $('#invite-user').hidden = !operator; $('#access-requests-tab').hidden = !operator; csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
 async function registry(kind, space_id) {
   let cursor = null; const items = [];
   do {const result = await api('/admin/v0/registry', 'POST', {kind, ...(space_id ? {space_id} : {}), cursor, limit: pageSize}); items.push(...result.items); cursor = result.has_more ? result.next_cursor : null;} while (cursor);
@@ -232,6 +232,7 @@ $('#new-space').addEventListener('click', () => busy($('#new-space'), async () =
 }));
 const scopeNames = {'message.send': '向获准的收件人发信', 'message.read': '收取自己的消息', 'receipt.write': '确认收取和处理', 'blob.write': '上传附件与资料', 'memory.write': '更新获准的资料集合', 'memory.read': '读取获准的资料集合'};
 function openOnboarding() {
+  if (!sid) throw new Error(ot('selectSpace'));
   const task = pendingCreation();
   if (task) {
     if (task.type !== 'agent') throw new Error('请恢复尚未完成的创建或签发。');

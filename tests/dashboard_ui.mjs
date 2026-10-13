@@ -27,6 +27,7 @@ test('a redeemed personal credential remains visible when space loading fails', 
     assert(w.document.querySelector('#detail').open);
     assert(w.document.querySelector('#detail-body').textContent.includes('wp_user_once'));
     assert.equal(w.document.querySelector('#login').hidden,true);
+    assert.equal(w.document.querySelector('#add-agent').hidden,true);
   } finally {dom.window.close();}
 });
 
