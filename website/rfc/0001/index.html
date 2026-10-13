@@ -1,0 +1,1237 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>异步信箱与记忆交换 — Waypost RFC</title><meta name="description" content="异步信箱与记忆交换。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f7f5ef"><link rel="canonical" href="https://waypost.hika.fyi/rfc/0001/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/#how">怎样交接</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>RFC-0001</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#1-摘要与规范约定">1. 摘要与规范约定</a><a href="#2-动机目标与非目标">2. 动机、目标与非目标</a><a href="#3-设计原则与先例">3. 设计原则与先例</a><a href="#4-领域身份与授权">4. 领域、身份与授权</a><a href="#5-版本编码与公共结果">5. 版本、编码与公共结果</a><a href="#6-消息契约">6. 消息契约</a><a href="#7-持久发布与恢复">7. 持久发布与恢复</a><a href="#8-独立收取游标与回执">8. 独立收取、游标与回执</a><a href="#9-资料上传与封存">9. 资料上传与封存</a><a href="#10-来源记忆协议">10. 来源记忆协议</a><a href="#11-mcp-与-http-操作映射">11. MCP 与 HTTP 操作映射</a><a href="#12-可选事件与订阅">12. 可选事件与订阅</a><a href="#13-通用-skill-的契约">13. 通用 Skill 的契约</a><a href="#14-实现模块与部署边界">14. 实现模块与部署边界</a><a href="#15-性质与验证边界">15. 性质与验证边界</a><a href="#16-关键端到端与反例场景">16. 关键端到端与反例场景</a><a href="#17-实施阶段与验收">17. 实施阶段与验收</a><a href="#18-替代方案与选择理由">18. 替代方案与选择理由</a><a href="#19-安全运维与待决策事项">19. 安全、运维与待决策事项</a><a href="#20-参考资料">20. 参考资料</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / RFC-0001</p><h1>RFC-0001：Waypost 异步信箱与记忆交换协议</h1><div class="rfc-source-links"><a href="/rfc/source/rfcs-0001-async-mailbox-and-memory-sync.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><div class="rfc-table"><table><thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态</td>
+<td>Draft / implementation baseline</td>
+</tr>
+<tr>
+<td>草案版本</td>
+<td>0.1.0</td>
+</tr>
+<tr>
+<td>应用协议版本</td>
+<td><code>0.1</code></td>
+</tr>
+<tr>
+<td>日期</td>
+<td>2026-10-11</td>
+</tr>
+<tr>
+<td>规范范围</td>
+<td>身份、异步消息、独立消费、资料对象、来源记忆和可选事件</td>
+</tr>
+<tr>
+<td>首个部署方案</td>
+<td>Cloudflare Workers + D1 + R2 Standard</td>
+</tr>
+<tr>
+<td>配套</td>
+<td><a href="/rfc/glossary/">术语</a>、<a href="/rfc/properties/">性质与验证计划</a>、<a href="/rfc/protocol-research/">研究依据</a></td>
+</tr>
+</tbody>
+</table></div><h2 id="1-摘要与规范约定">1. 摘要与规范约定</h2>
+<p>Waypost 为用户、个人 Agent 和客户端提供一个可独立使用的异步信箱。生产者发布消息与记忆资料，消费者在之后读取并报告收取或处理结果。双方不必同时在线。</p>
+<p>本 RFC 定义可以直接据以实施的 v0.1 行为。公开接口、通用 Skill 和协议格式属于同一项目；任何兼容客户端都可使用相同接口。模型执行、业务任务调度、内容理解和记忆语义合并由参与方负责。</p>
+<p>关键词 <code>MUST</code>、<code>MUST NOT</code>、<code>SHOULD</code>、<code>SHOULD NOT</code>、<code>MAY</code> 按 <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a> 和 <a href="https://www.rfc-editor.org/rfc/rfc8174">RFC 8174</a> 理解。只有大写关键词表达该级别的规范要求。</p>
+<p>本规范的操作语义优先于示例、部署建议和外部研究笔记。配套性质用于验证这些语义；发现冲突时必须先修正规范，不能靠实现静默选择。</p>
+<p>本文是实施基线，不代表服务已运行、第三方宿主已兼容或存在官方在线地址。</p>
+<h2 id="2-动机目标与非目标">2. 动机、目标与非目标</h2>
+<h3 id="21-动机">2.1 动机</h3>
+<p>个人用户可能有多个 Agent：它们分别持有会话、结果、待办线索和记忆，用户需要反复打开不同入口、搬运上下文。执行方和接收方不同时在线时，单次工具返回或临时通知不能提供连续记录。</p>
+<p>Waypost 提供稳定的身份、持久内容与公开交换协议。用户可以保留原有助手，更换消费者或执行环境时仍可读取消息和携带记忆资料。</p>
+<h3 id="22-目标">2.2 目标</h3>
+<ol>
+<li>已发布内容具有稳定身份，可查询、可恢复、可重复收取。</li>
+<li>同一写入的重传不会形成第二次发布；内容冲突有明确结果。</li>
+<li>每个消费者独立同步和确认，读取不删除其他消费者的数据。</li>
+<li>来源记忆支持完整快照、增量更新、删除标记与可携带导出。</li>
+<li>MCP 与认证 HTTP 接口映射相同的领域操作。</li>
+<li>事件通知是可选能力，持久读取始终是恢复依据。</li>
+<li>权限和数据模型不依赖特定模型、宿主、应用或云平台。</li>
+</ol>
+<h3 id="23-非目标">2.3 非目标</h3>
+<p>v0.1 不实现 Agent 运行时托管、跨服务器联邦、自动业务编排、语义记忆合并、模型推理、团队组织系统或公开 Agent 市场。端到端加密和任意第三方平台的内部记忆抽取另行设计。</p>
+<p>v0.1 的控制面服务一个自托管实例的所有者，可以管理多个隔离 Space。面向公众的注册、计费与多所有者账号系统不属于本 RFC，但业务接口始终执行空间隔离。</p>
+<h2 id="3-设计原则与先例">3. 设计原则与先例</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>先例</th>
+<th>借鉴</th>
+<th>本项目自己的边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Matrix MSC</td>
+<td>动机、精确操作、失败、替代方案与兼容说明</td>
+<td>不采用房间、联邦或其治理流程</td>
+</tr>
+<tr>
+<td>Matrix Client-Server</td>
+<td>请求重传标识与增量同步位置分开</td>
+<td>自己定义稳定参与者范围与独立消费者</td>
+</tr>
+<tr>
+<td>CloudEvents 1.0.2</td>
+<td>可移植的事件身份和信封格式</td>
+<td>身份认证、游标与记忆一致性由本 RFC 定义</td>
+</tr>
+<tr>
+<td>Standard Webhooks</td>
+<td>稳定事件 ID、签名与交付语义</td>
+<td>通知回执不代表输入处理或业务动作完成</td>
+</tr>
+<tr>
+<td>MCP Events</td>
+<td>能力发现、订阅与可选通知适配</td>
+<td>特定宿主的后台行为不进入通用核心</td>
+</tr>
+</tbody>
+</table></div><p>具体来源、核对版本和差异见<a href="/rfc/protocol-research/">研究依据</a>。本 RFC 不宣称实现 Matrix 协议或一个已被其他宿主普遍支持的事件扩展。</p>
+<h2 id="4-领域身份与授权">4. 领域、身份与授权</h2>
+<h3 id="41-数据边界">4.1 数据边界</h3>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">flowchart LR
+    A[生产者 Agent / 客户端] --&gt;|MCP 或认证 HTTP| S[Waypost 领域服务]
+    S --&gt; B[不可变正文与资料]
+    S --&gt; M[消息索引 / 版本 / Feed / 回执]
+    M --&gt; C[独立消费者]
+    B --&gt; C
+    M --&gt; E[可选事件交付适配]
+</code></pre>
+</details><p>所有业务对象属于一个 Space。服务生成稳定对象 ID；它们是不可解释的字符串，客户端不得依赖排序、前缀或从 ID 推导所有者。</p>
+<p>公共 ID 字段允许 ASCII 字母、数字、<code>_</code>、<code>-</code>，长度 1–96。示例使用简短 ID；实现 SHOULD 使用具有足够唯一性的随机标识。<code>request_id</code> 另允许 <code>.</code>、<code>:</code>，长度 1–128，不用作文件路径。</p>
+<h3 id="42-参与者与消费者">4.2 参与者与消费者</h3>
+<ul>
+<li>Actor 表示用户、Agent 或客户端身份；显示名称不是身份凭据。</li>
+<li>Principal 是认证得到的调用上下文：<code>space_id</code>、<code>actor_id</code>、权限、授权代次。</li>
+<li>Consumer 是稳定的收取身份：所属 Actor、视图、固定过滤条件和视图版本。</li>
+<li>同一 Actor 的多个安装 MAY 使用不同 Consumer；它们的回执与检查点独立。</li>
+<li>令牌轮换 MUST NOT 改变 Actor、Consumer 或既有提交的幂等范围。</li>
+</ul>
+<p>Space 有一个默认收件 Actor。消息省略 <code>recipient_ids</code> 时发给它；这个默认身份在 v0.1 中不允许原地更换。普通客户端可以自行选择接收与处理方式。</p>
+<h3 id="43-权限">4.3 权限</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>权限</th>
+<th>默认资源范围</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>message.send</code></td>
+<td>允许的收件 Actor 集合，缺省仅空间默认收件人</td>
+</tr>
+<tr>
+<td><code>message.read</code></td>
+<td>当前 Actor 收到的消息与自己发布的消息</td>
+</tr>
+<tr>
+<td><code>space.observe</code></td>
+<td>所有者显式授予的空间消息观察范围</td>
+</tr>
+<tr>
+<td><code>receipt.write</code></td>
+<td>当前主体绑定的 Consumer</td>
+</tr>
+<tr>
+<td><code>memory.write</code></td>
+<td>当前 Actor 所有的 Collection</td>
+</tr>
+<tr>
+<td><code>memory.read</code></td>
+<td>所有者授予的 Collection 集合</td>
+</tr>
+<tr>
+<td><code>blob.write</code></td>
+<td>当前空间、当前提交范围的暂存上传</td>
+</tr>
+<tr>
+<td><code>event.subscribe</code></td>
+<td>主体本来可以读取的资源与过滤范围</td>
+</tr>
+</tbody>
+</table></div><p>生产者、Space、来源 Actor 和 Consumer 身份 MUST 来自已验证凭据。正文、MCP <code>clientInfo</code>、CloudEvents <code>source</code> 或显示名称不能扩大权限。</p>
+<p>每次读取、写入、查询状态、附件访问和发布都重新检查当前授权。失效或已撤销凭据即使带着曾成功的幂等键，也不得取得旧结果。</p>
+<p>撤销以元数据提交为边界，之后的新操作不能使用旧权限；已经完成发布或已发出的响应字节不能被撤回。等待上传的发布仍需在最终提交点通过授权检查。</p>
+<p>不可读对象统一返回 <code>NOT_FOUND</code>，不通过错误区别“另一个空间存在”和“不存在”。已知的本空间能力不足可以返回 <code>FORBIDDEN</code>。</p>
+<h3 id="44-consumer-视图">4.4 Consumer 视图</h3>
+<p><code>inbox</code> 视图：读取投递给所属 Actor 的消息、向其公开的回执变化，以及有读取授权的记忆变化。</p>
+<p><code>space_log</code> 视图：需要 <code>space.observe</code>，观察空间中的获准消息；记忆内容仍需独立的 <code>memory.read</code>。观察消息不授予修改来源记忆的权限。</p>
+<p>过滤字段限于 <code>producer_ids</code>、<code>thread_ids</code>、<code>item_types</code>、<code>collection_ids</code>，值是去重后的集合。空列表表示不额外筛选。过滤不能扩大上述视图。</p>
+<p>视图或权限发生变化时递增 Consumer 的 <code>view_revision</code>。旧游标返回 <code>CURSOR_SCOPE_CHANGED</code>，客户端以新的起点重同步并按对象 ID 去重。</p>
+<h2 id="5-版本编码与公共结果">5. 版本、编码与公共结果</h2>
+<h3 id="51-版本分层">5.1 版本分层</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>层</th>
+<th>v0.1 约定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Waypost 应用 API</td>
+<td><code>0.1</code>；HTTP 路径 <code>/v0</code></td>
+</tr>
+<tr>
+<td>消息记录格式</td>
+<td><code>envelope_version: 1</code></td>
+</tr>
+<tr>
+<td>CloudEvents 格式</td>
+<td><code>specversion: &quot;1.0&quot;</code>，参考文本为 1.0.2</td>
+</tr>
+<tr>
+<td>MCP 版本</td>
+<td>由宿主与适配器协商，不由 Waypost API 版本推导</td>
+</tr>
+<tr>
+<td>可选宿主事件 profile</td>
+<td>独立公布 capability，不隐含后台执行能力</td>
+</tr>
+</tbody>
+</table></div><p>请求使用 UTF-8 JSON，MUST 拒绝重复 JSON 对象键、非有限数字和 schema 未声明的请求字段。用户自定义内容限于明确的 <code>metadata</code> 对象，不可覆盖服务字段。</p>
+<p>同一语义请求的指纹采用 RFC 8785 JCS 后的 SHA-256。收件人集合先排序，默认值在首次保留提交时固定；附件列表、正文和 metadata 的实际内容保留。客户端时间不参与 Feed 排序。</p>
+<h3 id="52-结果格式">5.2 结果格式</h3>
+<pre><code class="language-json">{
+  &quot;ok&quot;: true,
+  &quot;request_id&quot;: &quot;req_001&quot;,
+  &quot;data&quot;: {
+    &quot;submission_state&quot;: &quot;committed&quot;,
+    &quot;resource_id&quot;: &quot;msg_001&quot;
+  }
+}
+</code></pre>
+<pre><code class="language-json">{
+  &quot;ok&quot;: false,
+  &quot;request_id&quot;: &quot;req_001&quot;,
+  &quot;error&quot;: {
+    &quot;code&quot;: &quot;IDEMPOTENCY_CONFLICT&quot;,
+    &quot;message&quot;: &quot;The request ID was already used with different content.&quot;,
+    &quot;retryable&quot;: false,
+    &quot;details&quot;: {}
+  }
+}
+</code></pre>
+<p>所有领域操作使用上述结果语义。MCP 适配器按实际协商的 SDK 结果格式承载它，并把失败明确标为工具失败；JSON-RPC 解析、未知方法等传输错误仍使用 MCP 规范的错误格式。</p>
+<p>未知响应扩展字段 MAY 忽略，未知必需版本或 item 类型必须报告不支持，不能把它当作已处理并越过检查点。</p>
+<h3 id="53-默认资源限制">5.3 默认资源限制</h3>
+<p>以下是首版的应用限制，可通过 <code>describe</code> 公布更小部署值；客户端必须遵循实际值。</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>资源</th>
+<th>默认上限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>普通 JSON 请求 / 消息信封</td>
+<td>64 KiB UTF-8 字节</td>
+</tr>
+<tr>
+<td>单个 Blob</td>
+<td>8 MiB</td>
+</tr>
+<tr>
+<td>每封消息的附件</td>
+<td>16 个</td>
+</tr>
+<tr>
+<td>收件人</td>
+<td>16 个，同一 Space</td>
+</tr>
+<tr>
+<td>单页 Feed / 记忆条目</td>
+<td>100 个，默认 50</td>
+</tr>
+<tr>
+<td>单次 ACK</td>
+<td>20 个 item</td>
+</tr>
+<tr>
+<td>内联记忆发布</td>
+<td>500 个 upsert + delete 条目</td>
+</tr>
+<tr>
+<td>manifest Blob 记忆发布</td>
+<td>10,000 个 upsert + delete 条目，仍受 Blob 字节限制</td>
+</tr>
+<tr>
+<td>Collection 当前条目</td>
+<td>10,000 个，包括 active items 与当前 Tombstone</td>
+</tr>
+<tr>
+<td>暂存上传期限</td>
+<td>24 小时</td>
+</tr>
+</tbody>
+</table></div><p>大快照通过预先封存的 manifest Blob 发布，避免把全部条目装入 MCP 调用。更大的集合在 v0.1 中拆成独立 Collection，不隐藏截断。</p>
+<p><code>visible_seq</code> 在协议中为十进制字符串，避免 JSON 数值精度问题；<code>revision</code> 是 0 到 <code>2^53-1</code> 的整数。达到上限返回 <code>RESOURCE_LIMIT</code>，不回绕。</p>
+<h2 id="6-消息契约">6. 消息契约</h2>
+<h3 id="61-发送请求">6.1 发送请求</h3>
+<pre><code class="language-json">{
+  &quot;request_id&quot;: &quot;req_report_001&quot;,
+  &quot;recipient_ids&quot;: [&quot;actor_user&quot;],
+  &quot;thread_id&quot;: null,
+  &quot;in_reply_to&quot;: null,
+  &quot;kind&quot;: &quot;result&quot;,
+  &quot;subject&quot;: &quot;研究资料已整理&quot;,
+  &quot;body&quot;: {
+    &quot;text&quot;: &quot;已整理三个方案，附件包含完整资料。&quot;
+  },
+  &quot;source&quot;: {
+    &quot;native_thread_id&quot;: &quot;external_thread_01&quot;
+  },
+  &quot;attachment_ids&quot;: [],
+  &quot;metadata&quot;: {}
+}
+</code></pre>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>字段</th>
+<th>规则</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>request_id</code></td>
+<td>必填，当前写操作的稳定幂等标识</td>
+</tr>
+<tr>
+<td><code>recipient_ids</code></td>
+<td>可省略；显式提供时必须非空、唯一、获准且同空间</td>
+</tr>
+<tr>
+<td><code>thread_id</code></td>
+<td>空值创建新会话；已有 ID 必须可用且当前主体有权参与</td>
+</tr>
+<tr>
+<td><code>in_reply_to</code></td>
+<td>可空；非空时必须是可读原消息，且与 <code>thread_id</code> 一致</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>info</code>、<code>question</code>、<code>result</code>、<code>todo_suggestion</code>、<code>memory_notice</code>、<code>processing_result</code></td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td>必填，非空字符串，最多 256 UTF-8 字节</td>
+</tr>
+<tr>
+<td><code>body.text</code></td>
+<td>必填字符串，问题的选项可放 <code>body.options</code>，最多 20 个字符串</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>可选来源引用，仅允许 <code>native_thread_id</code>、<code>native_message_id</code>、<code>url</code></td>
+</tr>
+<tr>
+<td><code>attachment_ids</code></td>
+<td>封存且可用于当前投递范围的 Blob ID 列表</td>
+</tr>
+<tr>
+<td><code>metadata</code></td>
+<td>可选自定义 JSON 对象，随信封大小限制，不参与授权</td>
+</tr>
+</tbody>
+</table></div><p>对回复请求，收件人 MUST 显式提供；不存在“服务根据一段自然语言猜收件人”的行为。仅提供 <code>in_reply_to</code> 而未提供 <code>thread_id</code> 时，服务使用原消息的会话。</p>
+<p>新收件人加入已有会话，必须通过所有者的控制面授权；<code>message.send</code> 本身不能让新增收件人自动读取会话历史。</p>
+<h3 id="62-已发布消息">6.2 已发布消息</h3>
+<p>服务补齐 <code>message_id</code>、<code>space_id</code>、<code>producer_id</code>、<code>thread_id</code>、<code>committed_at</code>、<code>envelope_version</code>，以及最终固定的收件人和附件列表。<code>committed_at</code> 是服务发布时间，不等于来源发生时间。</p>
+<p>消息正文与上述身份字段发布后不可变。补充、更正或撤回意图通过引用原消息的新消息表达；这不自动撤销任何外部执行。</p>
+<p>一个消息引用的正文与全部附件 MUST 在发布前可读取并封存。单个附件未就绪时返回 <code>BLOB_NOT_SEALED</code>，整个消息不得部分发布。</p>
+<h3 id="63-状态与幂等">6.3 状态与幂等</h3>
+<p>幂等键为 <code>(space_id, producer_id, operation, request_id)</code>。它不包含当前 token ID。指纹相同的重复调用返回原稳定结果；不同内容返回 <code>IDEMPOTENCY_CONFLICT</code>。</p>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; reserved: 固定幂等键、指纹与资源 ID
+    reserved --&gt; prepared: 正文与资料就绪
+    prepared --&gt; committed: 原子发布索引与 Feed
+    committed --&gt; [*]
+    reserved --&gt; failed: 明确的不可重试失败
+    prepared --&gt; failed: 明确的不可重试失败
+</code></pre>
+</details><p>网络异常本身不是 <code>failed</code> 事实。可重试的暂时失败保留 <code>reserved</code> 或 <code>prepared</code>，通过同一个请求恢复。并发重试不能获得两个资源 ID。</p>
+<p>schema、权限和资料引用的前置校验失败不占用新的幂等键。保留之后被确定无法以原内容发布的失败，例如记忆 CAS 冲突或无效 manifest，记录为 failed 并返回原错误；暂时存储故障以及凭据当前不可用不能被伪装为永久业务失败。授权恢复后仍须先核实原键。</p>
+<p>同指纹的并发请求正在执行时，可返回 <code>SUBMISSION_PENDING</code> 与原资源/提交标识；不返回保存成功。已发布后再次调用必须返回同一 <code>resource_id</code> 和 <code>committed_at</code>，而不是另一封“相同内容”的消息。</p>
+<h2 id="7-持久发布与恢复">7. 持久发布与恢复</h2>
+<h3 id="71-首个存储方案">7.1 首个存储方案</h3>
+<ul>
+<li>R2：不可变消息正文、封存 Blob、记忆 manifest 和导出资料。</li>
+<li>D1：身份与授权、提交保留、消息索引、Consumer、Feed、回执、Collection、Revision。</li>
+<li>Workers：认证、schema 校验、领域操作、MCP / HTTP 适配和可选通知。</li>
+</ul>
+<p>R2 与 D1 之间没有跨服务原子事务。D1 的最终发布提交是业务可见性的线性化点。</p>
+<h3 id="72-发布算法约束">7.2 发布算法约束</h3>
+<ol>
+<li>验证当前授权和请求格式。</li>
+<li>保留幂等键、规范化指纹、稳定资源 ID 与服务时间。</li>
+<li>在服务控制的不可变键准备正文或版本 manifest，核验资料引用。</li>
+<li>在一笔元数据事务中完成提交状态、业务索引、版本变更和 Feed 项；发布序号在此时生成。</li>
+<li>事务提交后返回 <code>committed</code>。如果响应丢失，同幂等键查询或重试返回第 4 步的原结果。</li>
+</ol>
+<p><code>visible_seq</code> MUST NOT 在上传暂存时分配；来源时间和请求创建顺序也不能替代发布顺序。</p>
+<p>授权代次或 Consumer/Collection 状态在等待上传期间改变时，最终发布必须重新校验。重新校验与元数据写入必须防止并发撤销穿透；内存中的旧授权结果不是提交授权。</p>
+<h3 id="73-元数据原子性">7.3 元数据原子性</h3>
+<p>每次发布要么同时写入业务记录、提交结果与 Feed，要么没有任何可见副作用。记忆 CAS 未命中时，既不能增加版本，也不能追加 Feed。</p>
+<p>D1 适配器不得把 SQL 执行成功当作条件更新成功。必须以受同一提交条件保护的数据库操作实现 <code>Commit</code>；0 行命中的更新不能随后无条件插入版本或事件。具体 SQL 由实现决定，但必须通过并发和故障契约测试。</p>
+<h3 id="74-故障矩阵">7.4 故障矩阵</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>失败点</th>
+<th>可见结果</th>
+<th>恢复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>保留提交前失败</td>
+<td>无成功结果</td>
+<td>同 ID 正常重试</td>
+</tr>
+<tr>
+<td>保留后、正文未就绪</td>
+<td>未发布</td>
+<td>沿原提交准备内容</td>
+</tr>
+<tr>
+<td>R2 成功、D1 失败</td>
+<td>内容不可见于 Feed</td>
+<td>沿原提交发布或清理暂存</td>
+</tr>
+<tr>
+<td>D1 成功、响应丢失</td>
+<td>已发布</td>
+<td>同 ID 返回原结果</td>
+</tr>
+<tr>
+<td>Consumer 下载后崩溃、未 ACK</td>
+<td>内容仍在</td>
+<td>重读并按 item ID 去重</td>
+</tr>
+<tr>
+<td>收取已确认、业务处理失败</td>
+<td>收取记录保留</td>
+<td>Consumer 从自身待处理队列恢复</td>
+</tr>
+</tbody>
+</table></div><p>已发布记录不依赖 Worker 内存、连接或 <code>waitUntil</code> 生存。暂存清理只能删除未封存、无发布引用且没有有效提交租约的资料。</p>
+<h2 id="8-独立收取游标与回执">8. 独立收取、游标与回执</h2>
+<h3 id="81-feed-item">8.1 Feed Item</h3>
+<p>Feed 项包含：<code>item_id</code>、<code>space_id</code>、<code>visible_seq</code>、<code>item_type</code>、<code>resource_id</code>、<code>resource_version</code>、<code>producer_id</code>、<code>recipient_ids</code>、<code>thread_id</code>、<code>committed_at</code>。</p>
+<p><code>item_type</code> 为 <code>message</code>、<code>memory_revision</code> 或 <code>receipt</code>。消息面向其收件范围；回执面向原 Feed 项的生产者和具有观察授权的主体；记忆变化仅对可读取该 Collection 的消费者可见。</p>
+<p>每个 Feed Item 同时有不可变的类型专属 <code>data</code>：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>item_type</th>
+<th>resource_id / version</th>
+<th>data 必需字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>message</td>
+<td>message_id / 1</td>
+<td>message_id、subject、kind</td>
+</tr>
+<tr>
+<td>memory_revision</td>
+<td>collection_id / revision</td>
+<td>collection_id、revision、parent_revision、manifest_blob_id</td>
+</tr>
+<tr>
+<td>receipt</td>
+<td>receipt_id / 该回执的状态版本</td>
+<td>subject_item_id、subject_resource_id、consumer_id、actor_id、stage、updated_at</td>
+</tr>
+</tbody>
+</table></div><p>回执 data 描述这次推进时的阶段，不在后来读取时改成另一阶段。生产者可以据此知道哪个消费者收取了哪个输入；不必依靠缺少定义的 receipt.get。回执状态版本只在真正推进时增加。</p>
+<p>可见性等于 Space、主体授权、Consumer 视图与固定过滤条件的交集。<code>space_log</code> 不自动暴露未授权记忆。</p>
+<h3 id="82-读取">8.2 读取</h3>
+<pre><code class="language-json">{
+  &quot;consumer_id&quot;: &quot;consumer_a&quot;,
+  &quot;cursor&quot;: null,
+  &quot;limit&quot;: 50
+}
+</code></pre>
+<pre><code class="language-json">{
+  &quot;ok&quot;: true,
+  &quot;request_id&quot;: &quot;read_001&quot;,
+  &quot;data&quot;: {
+    &quot;items&quot;: [
+      {
+        &quot;item_id&quot;: &quot;feed_001&quot;,
+        &quot;space_id&quot;: &quot;space_001&quot;,
+        &quot;visible_seq&quot;: &quot;1&quot;,
+        &quot;item_type&quot;: &quot;message&quot;,
+        &quot;resource_id&quot;: &quot;msg_001&quot;,
+        &quot;resource_version&quot;: 1,
+        &quot;producer_id&quot;: &quot;actor_agent_a&quot;,
+        &quot;recipient_ids&quot;: [&quot;actor_user&quot;],
+        &quot;thread_id&quot;: &quot;thread_001&quot;,
+        &quot;committed_at&quot;: &quot;2026-10-11T10:00:00Z&quot;,
+        &quot;data&quot;: {
+          &quot;message_id&quot;: &quot;msg_001&quot;,
+          &quot;subject&quot;: &quot;研究资料已整理&quot;,
+          &quot;kind&quot;: &quot;result&quot;
+        }
+      }
+    ],
+    &quot;next_cursor&quot;: &quot;opaque_cursor&quot;,
+    &quot;has_more&quot;: false
+  }
+}
+</code></pre>
+<p>非写入操作的响应 request_id 是服务生成的跟踪标识，不是新的幂等提交。<code>cursor: null</code> 从保留历史的起点开始，不能默认跳到“现在”。</p>
+<p>读取按 <code>visible_seq</code> 升序、排他性位置返回。<code>has_more</code> 只表示响应取样时尚有符合范围的保留项，不承诺之后没有新发布。</p>
+<p>游标是经完整性保护的 opaque 值，绑定协议、Space、Actor、Consumer、<code>view_revision</code>、规范化 filter 指纹与位置。客户端不得自行增减位置。游标被修改返回 <code>INVALID_CURSOR</code>；用于其他 Consumer 返回 <code>CURSOR_SCOPE_CHANGED</code>。</p>
+<p>游标同时绑定实际 scope/resource-grants 的指纹。同 Consumer 换用权限不同的凭据时需要重新同步；同权限的令牌轮换保持游标有效，不把 token ID 当授权指纹。</p>
+<p>每页返回的游标只能越过已返回的可见项及确定不可见的项；不能越过仍在准备但未来以较低序号补入的项。实现避免这种情况的主要规则是最终提交才分配序号。</p>
+<h3 id="83-ack-与检查点">8.3 ACK 与检查点</h3>
+<pre><code class="language-json">{
+  &quot;request_id&quot;: &quot;ack_001&quot;,
+  &quot;consumer_id&quot;: &quot;consumer_a&quot;,
+  &quot;items&quot;: [
+    { &quot;item_id&quot;: &quot;feed_001&quot;, &quot;stage&quot;: &quot;received&quot; }
+  ],
+  &quot;checkpoint_cursor&quot;: &quot;opaque_cursor&quot;
+}
+</code></pre>
+<p><code>received</code> 是当前 Consumer 声明已经将输入可靠保存；<code>processed</code> 是其声明已处理该输入。服务不能据此证明外部动作成功。服务只验证主体、资源、Consumer、范围和回执转换。</p>
+<p>回执按 <code>(space_id, consumer_id, item_id)</code> 独立保存，并单调推进 <code>none → received → processed</code>。乱序收到 <code>processed</code> 可同时建立该消费者的 <code>received</code>，之后迟到的 <code>received</code> 不能回退它。</p>
+<p>重复同阶段 ACK 成功返回当前状态，不产生第二条回执变化事件。只有状态真正推进才发布 <code>receipt</code> Feed 项。确认一个回执 Feed 项本身不再产生回执 Feed 项，避免确认循环。</p>
+<p><code>checkpoint_cursor</code> 可空；非空时记录消费者声明已经可靠保存的收取位置。它不要求此前每项都 <code>processed</code>，也不作为其他 Consumer 的位置。</p>
+<p>检查点按 Consumer、view_revision 与有效授权指纹分别保存。同一固定视图只能前进；视图变更后的起点是新的检查点，不拿旧视图的较大位置阻止新授权历史的补收。</p>
+<p>客户端 MUST 在持久保存整页内容与待处理记录后提交该检查点。服务确认检查点是一个声明，不代表服务能证明客户端实际的本机持久性。</p>
+<p>一次 ACK 的回执、检查点与相应变化记录原子提交。检查点只允许前进；较旧但合法的检查点为无副作用成功，不回退进度。</p>
+<h3 id="84-保留与重同步">8.4 保留与重同步</h3>
+<p>v0.1 默认不自动裁剪已发布消息、版本和 Feed，不因 ACK 删除内容。初始部署保留完整增量记录，同时公布容量限额；满额时拒绝新写入，不静默丢旧信。</p>
+<p>若部署启用了后续的保留策略，必须公布 <code>history_floor</code>；旧游标返回 <code>CURSOR_EXPIRED</code> 并提供明确重同步入口。v0.1 实现可以不提供裁剪能力，不能假装缺失历史仍可完整恢复。</p>
+<p>重同步从保留内容重新建立视图，使用稳定 item/resource ID 去重。重同步不是执行外部操作的命令，业务副作用仍由消费者自己的去重和执行记录管理。</p>
+<h2 id="9-资料上传与封存">9. 资料上传与封存</h2>
+<h3 id="91-上传协议">9.1 上传协议</h3>
+<p><code>blob.prepare</code> 请求：<code>request_id</code>、<code>content_type</code>、<code>size_bytes</code>、<code>sha256</code>、可选 <code>filename</code>。摘要是 64 位小写十六进制；大小是非负整数，受当前部署上限约束。零字节文件合法，使用空字节序列的真实 SHA-256。</p>
+<p>响应：<code>upload_id</code>、<code>blob_id</code>、<code>upload_url</code>、<code>expires_at</code>、必须使用的请求头说明。服务生成对象键，调用方不得传入任意 bucket、路径或远程抓取地址。</p>
+<p>v0.1 使用 <code>PUT /v0/uploads/{upload_id}/content</code>，原参与者凭据认证，直接流式接收文件。服务在有效上传范围内检查类型、实际字节数与 SHA-256；内容校验必须针对实际收到的字节，而非仅保存调用方声称的摘要。</p>
+<p>Cloudflare 适配器 SHOULD 利用 R2 Put 的服务端 checksum 校验并流式写入，避免在 Worker 内缓冲或重新计算整份大文件。<a href="https://developers.cloudflare.com/r2/api/workers/workers-api-reference/">R2 Workers API</a></p>
+<p>PUT 的成功回执说明指定字节已完整存储；它仍不是封存回执。若 R2 成功但上传 metadata 响应丢失，后续重复 PUT 或 commit 要核实实际对象，不能仅凭旧的 pending 状态认定文件不存在。</p>
+<p>随后调用 <code>blob.commit</code>，携带 <code>request_id</code> 与 <code>upload_id</code>。文件校验成功且内容已可读后，原子地把 Blob 元数据标为 <code>sealed</code>，返回固定 <code>blob_id</code>、大小、类型和摘要。</p>
+<p>commit 在原操作成功后同键重试返回原封存结果。过期规则针对尚未封存的上传；已封存资料不因原上传的 expires_at 到达而失效。</p>
+<h3 id="92-不可变性">9.2 不可变性</h3>
+<p>上传对象从首次成功写入即按服务指定内容约束进行 create-only 写入；重复上传不能覆盖它。封存后新的 PUT 被拒绝，正在并发的迟到 PUT 也不能修改同键内容。</p>
+<p>未封存上传的重复 PUT 若现存对象大小、类型和被验证的 SHA-256 与保留值一致，返回成功的 <code>already_uploaded: true</code>，不再次覆盖；否则返回 <code>UPLOAD_CONTENT_CONFLICT</code>。封存后的 PUT 返回 <code>UPLOAD_SEALED</code>。R2 条件写返回 null 只表示条件未满足，必须核实现存对象后选择上述结果，不能直接当作已成功写入。</p>
+<p>暂存上传地址在本方案中不是无认证的永久桶地址。v0.1 不直接公开 R2 / S3 管理密钥，也不必引入可重复使用的预签名 PUT。以后采用这种方式时需另定义封存复制、校验、到期与撤销边界。</p>
+<p>Blob 读取必须检查当前权限：拥有者可读取自己的封存 Blob；消息或记忆的获准读者可读取其中明确引用的 Blob。拥有读取权不自动获得向其他收件人重新引用的权利；重引用需要拥有该 Blob 或所有者明确的 <code>blob.reference</code> 授权。</p>
+<p>未封存 Blob 不能进入消息或有效记忆版本。首版不执行跨 Space 的内容去重，也不暴露其他空间是否存在相同摘要。</p>
+<h3 id="93-失败与清理">9.3 失败与清理</h3>
+<p>摘要不符返回 <code>CHECKSUM_MISMATCH</code>，大小或类型不符返回 <code>INVALID_BLOB</code>，已过期返回 <code>UPLOAD_EXPIRED</code>。失败内容保持未封存，不能取得有效引用。</p>
+<p>清理前先通过元数据条件把未封存且过期的上传标为清理中，排除有效上传/提交租约；随后才删对象。封存与清理竞争只能有一个状态转换成功。</p>
+<p>封存 Blob 后消息发布失败，该 Blob 仍是当前来源拥有的封存资料，可用于恢复原提交。已发布引用存在时 MUST NOT 按暂存 TTL 删除它。</p>
+<h2 id="10-来源记忆协议">10. 来源记忆协议</h2>
+<h3 id="101-collection-与-revision">10.1 Collection 与 Revision</h3>
+<p>Collection 属于 <code>(space_id, source_actor_id, collection_id)</code>，并保存不可变的 <code>scope</code> 说明。它可以是来源原始资料，也可以是另一参与者整理的资料；服务不决定哪条自然语言“更正确”。</p>
+<p>创建后 <code>current_revision = 0</code>，表示空集合。每次成功发布由服务分配 <code>current_revision + 1</code>；生产者只能提供 <code>expected_revision</code>，不能自填服务版本。</p>
+<p>revision 0 是可读取的空状态，不要求已有 manifest Blob 或 Feed 发布。空集合的无变化提交可返回 revision 0；不会伪造 revision 1。</p>
+<p>外部来源自己的文件版本或修改时间放在条目 metadata，不替代服务版本或 CAS。</p>
+<h3 id="102-发布请求">10.2 发布请求</h3>
+<pre><code class="language-json">{
+  &quot;request_id&quot;: &quot;req_memory_001&quot;,
+  &quot;collection_id&quot;: &quot;collection_project_a&quot;,
+  &quot;expected_revision&quot;: 0,
+  &quot;mode&quot;: &quot;snapshot&quot;,
+  &quot;items&quot;: [
+    {
+      &quot;item_id&quot;: &quot;decision_001&quot;,
+      &quot;blob_id&quot;: &quot;blob_001&quot;,
+      &quot;path&quot;: &quot;decisions/product-direction.md&quot;,
+      &quot;metadata&quot;: { &quot;origin&quot;: &quot;user_explicit&quot; }
+    }
+  ],
+  &quot;delete_ids&quot;: []
+}
+</code></pre>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>字段</th>
+<th>规则</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>request_id</code></td>
+<td>必填，稳定提交 ID</td>
+</tr>
+<tr>
+<td><code>collection_id</code></td>
+<td>必填，已创建且主体获准写入的集合</td>
+</tr>
+<tr>
+<td><code>expected_revision</code></td>
+<td>必填，生产者基于的已确认服务版本</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>snapshot</code> 或 <code>delta</code></td>
+</tr>
+<tr>
+<td><code>items</code></td>
+<td>唯一 item ID 的条目列表，Blob 必须封存且可引用</td>
+</tr>
+<tr>
+<td><code>delete_ids</code></td>
+<td><code>delta</code> 中的明确删除集合；不得与 items ID 相交</td>
+</tr>
+<tr>
+<td><code>manifest_blob_id</code></td>
+<td>可代替 inline <code>items/delete_ids</code>；两种输入互斥</td>
+</tr>
+</tbody>
+</table></div><p><code>manifest_blob_id</code> 引用的 JSON 格式仍为 <code>{ &quot;items&quot;: [...], &quot;delete_ids&quot;: [...] }</code>，其实际内容也要通过相同字段、唯一性、大小和权限检查。服务不信任文件名或声称的 manifest 摘要代替内容验证。</p>
+<p>内联输入受 500 个变更和 64 KiB 请求限制；manifest 输入最多 10,000 个变更并受 Blob 大小限制，因此支持较大的完整快照。二者的权限与状态规则相同，容量不同。发布后 active items 与当前 Tombstone 合计不得超过部署公布上限；旧 revision 的历史记录不计入当前集合条数，但计入存储容量。</p>
+<h3 id="103-snapshot-的完整范围">10.3 Snapshot 的完整范围</h3>
+<p>Snapshot 替换该 Collection 的全部当前条目，<code>delete_ids</code> 必须为空。旧版存在但新版缺失的条目产生该来源内的 Tombstone。</p>
+<p>空 snapshot 合法，表示明确清空这个集合的当前内容，必须具有写权限和正确 expected revision。通用 Skill 只有在用户授权该完整范围后才可发出；服务不猜测用户的自然语言意图。</p>
+<p>局部同步 MUST 使用 <code>delta</code>。本协议没有容易产生歧义的 <code>partial snapshot</code>；来源仅能导出部分资料时，使用 delta 或建立明确范围的独立 Collection。</p>
+<h3 id="104-delta-与删除">10.4 Delta 与删除</h3>
+<p>Delta 的 items 是按 item ID 的 upsert，未列出的当前条目保持不变。<code>delete_ids</code> 只影响同一 Collection；删除不存在的条目是无副作用操作。</p>
+<p>当前状态由 active items 与来源 Tombstone 构成。删除现存条目时记录其 <code>deleted_in_revision</code>；后续无变化快照和增量保留该标记。明确 upsert 可以从当前状态移除对应 Tombstone，历史版本仍保留它。</p>
+<p>曾删除条目以相同 ID 恢复，需要一个基于当前版本的明确 upsert。迟到的旧版本同步返回版本冲突，不能自动使它复活。</p>
+<p>同一请求不能同时 upsert 与 delete 相同 ID。重复 item ID、路径越界或未封存 Blob 整批拒绝，不部分应用。</p>
+<p><code>path</code> 是导出资料包中的相对标识，不能是绝对路径、包含 <code>..</code>、空路径段或反斜杠；不能用它直接写客户端本机文件。不同条目不得使用相同 path。</p>
+<h3 id="105-cas无变化与发布">10.5 CAS、无变化与发布</h3>
+<p>先检查幂等结果，再检查该次原提交的 expected revision。重试一个已经成功的请求，即使 head 已前进，仍返回原版本；一个新的请求携带旧 expected revision，则返回 <code>REVISION_CONFLICT</code>。</p>
+<p>需要发布时，准备完整、不可变的下一个状态 manifest，然后在一笔元数据事务里完成 head 的 CAS、Revision 记录、提交结果与 Feed 项。</p>
+<p>CAS 未命中返回当前 revision，MUST 没有新 head、Revision 或 Feed 副作用。不能先在应用代码读 head，再无条件写入。</p>
+<p>如果当前状态与请求计算结果语义相同：在 expected revision 匹配的条件下保存无变化提交结果，返回 <code>changed: false</code> 和原 revision，不增加版本或 Feed。metadata 变化属于内容变化；删除一个不存在的 ID 本身不构成变化。</p>
+<p>无变化判定的保存也要在同一元数据提交点验证当前 head 仍等于 expected revision，不能在另一个写入已经前进 head 后仍返回基于旧版本的无变化成功。</p>
+<pre><code class="language-json">{
+  &quot;ok&quot;: true,
+  &quot;request_id&quot;: &quot;req_memory_001&quot;,
+  &quot;data&quot;: {
+    &quot;collection_id&quot;: &quot;collection_project_a&quot;,
+    &quot;revision&quot;: 1,
+    &quot;changed&quot;: true,
+    &quot;submission_state&quot;: &quot;committed&quot;
+  }
+}
+</code></pre>
+<h3 id="106-读取与导出">10.6 读取与导出</h3>
+<p><code>memory.read</code> 读取指定 Collection 的指定 revision，或最新版本。第一次请求最新版本时返回实际 revision；之后分页必须固定该 revision，避免跨页混合两个状态。</p>
+<p>条目按 item ID 排序，默认返回当前条目，<code>include_tombstones</code> 可显式获取删除标记。分页游标绑定 Collection、revision、读取范围与权限代次。</p>
+<p>客户端可由 manifest、条目 Blob 和来源 metadata 生成可携带资料包，包括人类可读 Markdown 和结构化 JSON。服务不把连接凭证打进资料包；访问令牌、签名密钥和对象管理凭据不得作为导出元数据。</p>
+<p>Memory read 输入为 <code>revision</code>（可空，表示最新）、<code>limit</code>、<code>cursor</code> 和 <code>include_tombstones</code>。响应必须带实际 <code>revision</code>、条目及 <code>next_cursor/has_more</code>；有游标时缺省 revision 取游标绑定值，不重新取 head。显式 revision 与游标不符返回 <code>INVALID_CURSOR</code>。分页固定 revision、include_tombstones 和有效读取授权。</p>
+<p>完整导出能力为 v0.1 必需；服务端生成 ZIP 是可选便利功能，客户端自行组合的结果不得改变资料身份与来源版本。</p>
+<h3 id="107-逻辑删除与物理保留">10.7 逻辑删除与物理保留</h3>
+<p>Tombstone 表示该版本之后条目不在当前内容中，不等于立即删除旧版本或其他 Collection 的资料。</p>
+<p>v0.1 为可恢复同步保留历史版本。彻底删除空间或资料字节属于所有者控制面的明确清理操作，必须停止访问、生成明确状态并确认清理结果；不能把一条来源 Tombstone 表述为所有参与方已经遗忘。</p>
+<p>面向公众托管前需另行明确历史保留、备份与物理清理政策；它不改变本 RFC 的“新版本逻辑删除”和独立来源范围。</p>
+<h2 id="11-mcp-与-http-操作映射">11. MCP 与 HTTP 操作映射</h2>
+<h3 id="111-必需操作">11.1 必需操作</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>领域操作</th>
+<th>MCP 工具</th>
+<th>HTTP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>describe</td>
+<td><code>waypost_describe</code></td>
+<td><code>GET /v0/describe</code></td>
+</tr>
+<tr>
+<td>message.send</td>
+<td><code>waypost_send</code></td>
+<td><code>POST /v0/messages</code></td>
+</tr>
+<tr>
+<td>message.get</td>
+<td><code>waypost_message_get</code></td>
+<td><code>GET /v0/messages/{message_id}</code></td>
+</tr>
+<tr>
+<td>inbox.read</td>
+<td><code>waypost_inbox</code></td>
+<td><code>POST /v0/inbox/read</code></td>
+</tr>
+<tr>
+<td>receipt.ack</td>
+<td><code>waypost_ack</code></td>
+<td><code>POST /v0/receipts</code></td>
+</tr>
+<tr>
+<td>submission.status</td>
+<td><code>waypost_status</code></td>
+<td><code>POST /v0/submissions/status</code></td>
+</tr>
+<tr>
+<td>blob.prepare</td>
+<td><code>waypost_blob_prepare</code></td>
+<td><code>POST /v0/uploads</code></td>
+</tr>
+<tr>
+<td>blob.commit</td>
+<td><code>waypost_blob_commit</code></td>
+<td><code>POST /v0/uploads/{upload_id}/commit</code></td>
+</tr>
+<tr>
+<td>blob.get</td>
+<td><code>waypost_blob_get</code></td>
+<td><code>GET /v0/blobs/{blob_id}</code></td>
+</tr>
+<tr>
+<td>memory.publish</td>
+<td><code>waypost_memory_publish</code></td>
+<td><code>POST /v0/memory/collections/{collection_id}/revisions</code></td>
+</tr>
+<tr>
+<td>memory.read</td>
+<td><code>waypost_memory_read</code></td>
+<td><code>POST /v0/memory/collections/{collection_id}/read</code></td>
+</tr>
+</tbody>
+</table></div><p>参数来自对应章节。同一领域操作在两个传输入口具有相同授权、幂等与错误行为；幂等 operation 使用领域名称，不使用 HTTP 路径或 MCP 显示前缀。</p>
+<p>同一个主体将超时 HTTP 提交换成 MCP 重试时，不能因此产生第二次发布。反过来也相同。</p>
+<p><code>blob.get</code> 的 MCP 结果提供鉴权下载方式与固定 Blob metadata；大内容由宿主支持的 HTTP 上传/下载能力处理，不要求模型把任意大文件装进工具上下文。宿主没有文件传输能力时，Skill 如实报告能力限制。</p>
+<h3 id="112-describe-与状态">11.2 Describe 与状态</h3>
+<p>Describe 返回：应用版本、主体的 Space/Actor/Consumer ID、默认收件 ID、允许的收件范围、实际限制与 capability。</p>
+<p>必需 capability：<code>mailbox</code>、<code>receipts</code>、<code>blob_upload</code>、<code>memory_snapshot</code>、<code>memory_delta</code>。可选 capability：<code>webhook_events</code>、<code>oauth</code>、<code>server_export</code>、其他宿主 profile。缺失或 false 都表示不支持，不允许客户端凭产品名称推断。</p>
+<p>Status 输入：<code>operation</code>、原 <code>request_id</code>。它只查询当前主体的该幂等提交，返回 <code>reserved</code>、<code>prepared</code>、<code>committed</code> 或 <code>failed</code> 以及可公开的原稳定结果；未知 ID 返回 <code>NOT_FOUND</code>，不是“确定没执行”的跨系统证明。</p>
+<h3 id="113-认证与控制面">11.3 认证与控制面</h3>
+<p>首版数据面 MUST 支持受限 Bearer token。Token 由服务生成至少 32 随机字节，存储摘要并绑定 Space、Actor、Consumer、scope、到期与撤销状态。令牌格式不是公开对象 ID；日志不能记录原令牌。</p>
+<p>控制面用独立的实例管理员凭据，不将其提供给 Agent。MUST 能创建 Space、默认收件 Actor、其他 Actor、Consumer、Collection、受限令牌，并撤销令牌或主体。</p>
+<p>控制面最小 HTTP 资源位于 <code>/admin/v0</code>：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>操作</th>
+<th>请求主体</th>
+<th>最小结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /spaces</code></td>
+<td>display_name</td>
+<td>space_id、默认收件 Actor、source_uri</td>
+</tr>
+<tr>
+<td><code>POST /spaces/{space_id}/actors</code></td>
+<td>display_name、kind=<code>user/agent/client</code></td>
+<td>actor_id</td>
+</tr>
+<tr>
+<td><code>POST /spaces/{space_id}/consumers</code></td>
+<td>actor_id、view、固定 filter</td>
+<td>consumer_id、view_revision</td>
+</tr>
+<tr>
+<td><code>POST /spaces/{space_id}/collections</code></td>
+<td>source_actor_id、scope、display_name</td>
+<td>collection_id、revision=0</td>
+</tr>
+<tr>
+<td><code>POST /spaces/{space_id}/tokens</code></td>
+<td>actor_id、consumer_id、明确 scopes/resource-grants、expires_at</td>
+<td>token_id、仅本次显示的原 token</td>
+</tr>
+<tr>
+<td><code>DELETE /tokens/{token_id}</code></td>
+<td>无</td>
+<td>revoked=true，幂等</td>
+</tr>
+<tr>
+<td><code>POST /spaces/{space_id}/actors/{actor_id}/disable</code></td>
+<td>无</td>
+<td>disabled=true，新的发布与访问停止</td>
+</tr>
+</tbody>
+</table></div><p>实例管理员使用独立的 <code>WAYPOST_ADMIN_SECRET</code>，至少 32 随机字节，通过 Bearer 认证，不进入外部助手配置。v0.1 的控制面请求失败可由管理员查询对象后处理；资源创建 SHOULD 支持同样的 request ID 机制，防止管理客户端超时重复创建。</p>
+<p>首个部署可以使用管理 CLI 调用受保护控制面，不必先建设完整网页账号系统。控制面路径与数据面分开；MCP 工具不能创建任意所有者或提升自身权限。</p>
+<p>OAuth 为可选认证适配，支持后才公布 capability。只能使用 OAuth 的宿主不能被声称支持尚未实现的 Bearer 接法。面向公众托管的账号生命周期另立 RFC。</p>
+<h3 id="114-错误表">11.4 错误表</h3>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>code</th>
+<th>HTTP</th>
+<th>retryable</th>
+<th>语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INVALID_ARGUMENT</code></td>
+<td>400</td>
+<td>false</td>
+<td>schema 或语义参数无效</td>
+</tr>
+<tr>
+<td><code>UNAUTHENTICATED</code></td>
+<td>401</td>
+<td>false</td>
+<td>凭据缺失、失效、撤销</td>
+</tr>
+<tr>
+<td><code>FORBIDDEN</code></td>
+<td>403</td>
+<td>false</td>
+<td>已知本空间能力不足</td>
+</tr>
+<tr>
+<td><code>NOT_FOUND</code></td>
+<td>404</td>
+<td>false</td>
+<td>不存在或无权知道该对象</td>
+</tr>
+<tr>
+<td><code>IDEMPOTENCY_CONFLICT</code></td>
+<td>409</td>
+<td>false</td>
+<td>同键不同内容</td>
+</tr>
+<tr>
+<td><code>REVISION_CONFLICT</code></td>
+<td>409</td>
+<td>false</td>
+<td>新请求基础版本不匹配，details 带当前 revision</td>
+</tr>
+<tr>
+<td><code>CURSOR_SCOPE_CHANGED</code></td>
+<td>409</td>
+<td>false</td>
+<td>Consumer 视图或权限版本改变</td>
+</tr>
+<tr>
+<td><code>INVALID_CURSOR</code></td>
+<td>400</td>
+<td>false</td>
+<td>游标损坏或非法</td>
+</tr>
+<tr>
+<td><code>CURSOR_EXPIRED</code></td>
+<td>410</td>
+<td>false</td>
+<td>部署裁剪了对应历史，需重同步</td>
+</tr>
+<tr>
+<td><code>BLOB_NOT_SEALED</code></td>
+<td>409</td>
+<td>false</td>
+<td>引用尚未封存资料</td>
+</tr>
+<tr>
+<td><code>CHECKSUM_MISMATCH</code></td>
+<td>422</td>
+<td>false</td>
+<td>上传的实际内容摘要不符</td>
+</tr>
+<tr>
+<td><code>INVALID_BLOB</code></td>
+<td>422</td>
+<td>false</td>
+<td>类型、大小等不符</td>
+</tr>
+<tr>
+<td><code>UPLOAD_EXPIRED</code></td>
+<td>410</td>
+<td>false</td>
+<td>暂存上传到期</td>
+</tr>
+<tr>
+<td><code>UPLOAD_SEALED</code></td>
+<td>409</td>
+<td>false</td>
+<td>已封存上传不能再次 PUT</td>
+</tr>
+<tr>
+<td><code>UPLOAD_CONTENT_CONFLICT</code></td>
+<td>409</td>
+<td>false</td>
+<td>同上传引用对应的现存内容不匹配</td>
+</tr>
+<tr>
+<td><code>RESOURCE_LIMIT</code></td>
+<td>413</td>
+<td>false</td>
+<td>请求或部署容量超限，需减少内容或调整配置</td>
+</tr>
+<tr>
+<td><code>UNSUPPORTED_VERSION</code></td>
+<td>400</td>
+<td>false</td>
+<td>不支持必需的应用版本</td>
+</tr>
+<tr>
+<td><code>RATE_LIMITED</code></td>
+<td>429</td>
+<td>true</td>
+<td>依 <code>retry_after_ms</code> 有界重试</td>
+</tr>
+<tr>
+<td><code>SUBMISSION_PENDING</code></td>
+<td>409</td>
+<td>true</td>
+<td>原提交仍在进行，查询或同键重试</td>
+</tr>
+<tr>
+<td><code>STORAGE_UNAVAILABLE</code></td>
+<td>503</td>
+<td>true</td>
+<td>暂时不能保存或读取，不能声称成功</td>
+</tr>
+</tbody>
+</table></div><p>retryable 只表示同一语义请求可以再尝试，不授权客户端无限重试或改用新 ID。</p>
+<h3 id="115-版本与-schema-演进">11.5 版本与 schema 演进</h3>
+<p>发布前草案可以调整，但 schema、示例、Skill、客户端与测试必须一起更新。首个公开发布以 <code>/v0</code> 和 <code>api_version: 0.1</code> 为明确的实验契约。</p>
+<p>已正式发布后，改变删除、授权、幂等范围或状态含义属于破坏性变化，必须新版本或新 RFC；不能只改工具描述。新增 capability 必须可发现且可缺省。</p>
+<h2 id="12-可选事件与订阅">12. 可选事件与订阅</h2>
+<h3 id="121-持久内容与通知分层">12.1 持久内容与通知分层</h3>
+<p>已发布 Feed Item 可以生成事件通知。通知失败、丢失、乱序或到期，都不能删除对应的消息、记忆或 Feed。</p>
+<p>第一阶段可以只提供轮询收取；核心发布时保存足以重建事件的数据。事件适配器不得依赖某个 MCP 连接或 isolate-local 内存保存唯一事件历史。</p>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">flowchart LR
+    P[消息或记忆发布] --&gt; F[持久 Feed]
+    F --&gt; R[按游标收取]
+    F --&gt; O[持久通知待办]
+    O --&gt; W[通用 Webhook]
+    O --&gt; A[可选宿主适配器]
+    W --&gt; C[消费者读取实际内容]
+    A --&gt; C
+</code></pre>
+</details><h3 id="122-cloudevents-profile">12.2 CloudEvents profile</h3>
+<p>事件使用 CloudEvents 1.0 structured JSON。服务为每个 Space 保存一个稳定、绝对的 <code>source_uri</code>，默认使用由随机 UUID 形成的 <code>urn:uuid:...</code>。迁移存储或域名不改变已保存的来源身份。</p>
+<p><code>id</code> 等于 Feed 的 <code>item_id</code>；同一事件重投保留 <code>source + id</code>。<code>time</code> 为服务发布事件的时间，序号放在 <code>data.visible_seq</code>，不把 <code>time</code> 当排序规则。</p>
+<pre><code class="language-json">{
+  &quot;specversion&quot;: &quot;1.0&quot;,
+  &quot;id&quot;: &quot;feed_001&quot;,
+  &quot;source&quot;: &quot;urn:uuid:7fdd711b-6779-4cb8-8108-8e3df90aed95&quot;,
+  &quot;type&quot;: &quot;waypost.message.committed.v1&quot;,
+  &quot;subject&quot;: &quot;messages/msg_001&quot;,
+  &quot;time&quot;: &quot;2026-10-11T10:00:00Z&quot;,
+  &quot;datacontenttype&quot;: &quot;application/json&quot;,
+  &quot;data&quot;: {
+    &quot;api_version&quot;: &quot;0.1&quot;,
+    &quot;message_id&quot;: &quot;msg_001&quot;,
+    &quot;visible_seq&quot;: &quot;1&quot;,
+    &quot;thread_id&quot;: &quot;thread_001&quot;
+  }
+}
+</code></pre>
+<p>初始事件类型：<code>waypost.message.committed.v1</code>、<code>waypost.memory.revision.published.v1</code>、<code>waypost.receipt.updated.v1</code>。</p>
+<p>应用字段放 <code>data</code>，不把含下划线的字段伪装成 CloudEvents 顶层扩展。通知默认只带身份、版本、序号与资源引用，单次最多 8 KiB；完整正文通过相同授权下的读取操作获取。</p>
+<p>事件 source 由服务确定，不能接受生产者自填它来取得身份。接收方读到事件不等于读取工具调用或外部动作获得额外权限。</p>
+<h3 id="123-订阅模型">12.3 订阅模型</h3>
+<p>实现 <code>webhook_events</code> capability 时，提供 <code>subscription.list</code>、<code>subscription.upsert</code>、<code>subscription.stop</code>，对应 MCP 工具 <code>waypost_subscriptions</code>、<code>waypost_subscribe</code>、<code>waypost_unsubscribe</code> 和 <code>/v0/subscriptions</code> HTTP 资源。</p>
+<p>Upsert 输入：<code>request_id</code>、<code>consumer_id</code>、<code>event_types</code>、固定资源过滤条件、<code>delivery</code>、<code>ttl_seconds</code>。返回 <code>subscription_id</code>、<code>expires_at</code>、<code>refresh_before</code> 与已验证的交付能力。delivery 为 <code>{ mode: &quot;webhook&quot;, url, secret }</code>；secret 由接收方预先配置，为 <code>whsec_</code> 加 32 随机字节的标准 base64，不作为订阅身份的一部分。</p>
+<p>身份由主体、Consumer、规范化过滤和交付目标组成，重复相同配置续订原订阅，不能产生重复投递源。默认 TTL 24 小时，最大 7 天；v0.1 不承诺无限期订阅。</p>
+<p>订阅范围不能超过消费者的读取范围。每次投递前重新校验权限、期限和目标状态；停止与撤销幂等，未来投递停止。在途请求可能已经被对方接收，不能声称撤回。</p>
+<p>订阅有效期与内容保留期分开。过期只停止提示，消费者仍用核心 Feed 补收。</p>
+<h3 id="124-通用-webhook-profile">12.4 通用 Webhook profile</h3>
+<p>Webhook 目标默认只接受 HTTPS 公网地址。激活前验证接收方可控制该地址，要求回调挑战成功；必须防止私有地址访问、DNS 重绑定及重定向绕过。若运行环境无法落实连接时的地址约束，该适配器不得对任意用户回调地址开放。</p>
+<p>通用验证请求为经同样签名的 <code>{ &quot;type&quot;: &quot;verification&quot;, &quot;challenge&quot;: &quot;一次性随机字符串&quot; }</code>。challenge 使用 32 随机字节的 base64url，60 秒内一次有效；接收方在 10 秒内返回 2xx 和 <code>{ &quot;challenge&quot;: &quot;相同字符串&quot; }</code>。服务校验 echo 后才激活订阅，不发送业务内容试探目标。</p>
+<p>采用 Standard Webhooks 的 HMAC-SHA256 签名，密钥为 32 个随机字节；<code>webhook-id</code> 使用事件 ID，<code>webhook-timestamp</code> 为本次签名时刻，签名覆盖实际发送的相同字节。</p>
+<p>同一事件对不同订阅有独立投递记录；本次 <code>attempt_id</code> 不是事件 ID。密钥轮换使用短暂双签窗口，服务不把签名 secret 放入事件正文或日志。</p>
+<p>接收方使用原始正文、完整签名输入与恒时比较验签，签名时间容忍度默认 300 秒；先验证再接受。签名和 ID 去重均需检查，验证请求也适用。密钥轮换的双签窗口最多 5 分钟。两端均不得解析后重新序列化原文再验签；非法签名不能取得成功交付回执。</p>
+<p>默认最多 5 次尝试，基准延迟为初次立即、1 秒、5 秒、30 秒、5 分钟，重试加有界抖动；遵循合法 Retry-After，但不超过订阅到期。</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>响应</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2xx</td>
+<td>记录通知已接收；不推进核心收取或 processed 回执</td>
+</tr>
+<tr>
+<td>408、429、5xx、网络异常</td>
+<td>在期限与次数内重试，事件 ID 保持不变</td>
+</tr>
+<tr>
+<td>410</td>
+<td>停止该订阅，保留业务内容</td>
+</tr>
+<tr>
+<td>413</td>
+<td>永久失败，检查适配后的载荷；不盲目重试</td>
+</tr>
+<tr>
+<td>401、403</td>
+<td>暂停目标交付，等待重新验证或密钥更新</td>
+</tr>
+<tr>
+<td>其他 4xx、3xx</td>
+<td>记录配置或协议错误，不跟随重定向</td>
+</tr>
+</tbody>
+</table></div><p>次数耗尽保存失败记录，可以人工恢复；核心收取不受影响。消费者根据 <code>(source, id)</code> 去重，仍不能假定 Webhook 对外动作恰好执行一次。</p>
+<h3 id="125-宿主适配器">12.5 宿主适配器</h3>
+<p>通用业务 API、Feed 和 CloudEvents profile 不依赖 OpenAI 账号、SDK、callback 地址或其后台执行环境。</p>
+<p>可选 ChatGPT MCP Events 适配器负责将事件转为该平台要求的 <code>eventId/name/timestamp/data</code>、方法和签名头格式，独立协商当前草案与版本。当前官方文档支持其 webhook 子集，不能推出其他宿主的后台能力。<a href="https://developers.openai.com/plugins/build/mcp-events">OpenAI MCP Events</a></p>
+<p>其他宿主可以轮询、使用自己的 callback，或通过另行验证的在线传输获得提示。通知只提供新的输入；启动、恢复或定时运行 Agent 的能力属于其宿主。</p>
+<h2 id="13-通用-skill-的契约">13. 通用 Skill 的契约</h2>
+<p>实现阶段提供 <code>skills/waypost/SKILL.md</code>，和中心服务同版本发布。其内容与 schema 从本 RFC 对齐，不能保持另一套同名但不同含义的协议。</p>
+<h3 id="131-必须支持的行为">13.1 必须支持的行为</h3>
+<ol>
+<li>使用宿主实际连接的 Waypost MCP，查看 describe 与工具 schema；未连接时保留内容并报告缺少配置。</li>
+<li>在用户明确要求或既有授权范围内发消息、结果、问题、待办建议与记忆。</li>
+<li>保留真实生产者身份；默认收件人取 describe，指定收件人使用获准的 Actor ID。</li>
+<li>在发送前持久保存 request ID；超时查询原提交，最多两次自动同键重试，冲突或授权失败时停止。</li>
+<li>只有取得 committed 回执才能说“已存入信箱”；不能说其他参与方已读或已完成。</li>
+<li>收取后先保存内容和待处理项，再 ACK；收取位置与业务处理进度分开。</li>
+<li>完整快照只用于明确授权的完整 Collection；局部更新用 delta，旧版本冲突先核实。</li>
+<li>数据不含管理凭证，来源正文不作为新增权限，原宿主的行动确认仍然有效。</li>
+<li>普通 Skill 不提供后台时钟；依用户或既有宿主运行机制检查回信。</li>
+</ol>
+<h3 id="132-可验证行为">13.2 可验证行为</h3>
+<p>Skill 场景评测检查实际工具调用、参数、状态报告和用户目标；不只匹配固定措辞。场景至少包含未连接、响应丢失、重复发信、只读到部分记忆、版本冲突、原会话失效、指定收件人与宿主无法传文件。</p>
+<p>Skill 本身不是可靠存储引擎。SDK、工具服务和消费者持久队列可以用确定性测试；模型是否选择了正确操作通过场景评测和真实宿主互操作验证。</p>
+<h2 id="14-实现模块与部署边界">14. 实现模块与部署边界</h2>
+<h3 id="141-建议模块">14.1 建议模块</h3>
+<pre><code class="language-text">waypost/
+  CONTEXT.md
+  docs/rfcs/
+  docs/research/
+  protocol/                 # 实现时：schema、公共结果与固定示例
+  src/domain/               # 领域数据与状态规则
+  src/service/              # 认证后的公开操作、发布与恢复
+  src/adapters/             # MCP、HTTP、D1、R2、可选宿主
+  skills/waypost/           # 实现时：可分发通用 Skill
+  tests/                    # 性质、契约、故障与互操作
+</code></pre>
+<p>以上是实现建议，不要求立即创建空文件或多包工程。首版可以一个 Worker 和一个数据库，不要求微服务或完整事件溯源。</p>
+<h3 id="142-最小存储接口">14.2 最小存储接口</h3>
+<p>接口的必要行为而非具体 SDK：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>边界</th>
+<th>必须提供</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auth</td>
+<td>得到稳定主体、Consumer、当前权限与授权代次</td>
+</tr>
+<tr>
+<td>MetadataStore</td>
+<td>保留提交；原子 commitMessage / commitRevision；按范围读 Feed；原子回执和检查点</td>
+</tr>
+<tr>
+<td>BlobStore</td>
+<td>create-only 流式写入、字节校验、封存资料读取及受条件保护的暂存清理</td>
+</tr>
+<tr>
+<td>Clock / ID</td>
+<td>可控时间与稳定生成结果，测试可以注入</td>
+</tr>
+<tr>
+<td>EventDelivery</td>
+<td>可选，读取持久待办并保存尝试与交付结果</td>
+</tr>
+</tbody>
+</table></div><p>内存实现可用于局部测试，不能替代生产的持久性验证。适配器必须通过相同公开操作的契约；不得只检查 SQL 表或私有 helper 与自身实现一致。</p>
+<h3 id="143-平台约束">14.3 平台约束</h3>
+<p>首个部署选择 Workers、D1、R2 Standard。当前免费额度和限制是平台事实，见<a href="/rfc/protocol-research/">研究笔记</a>，不作为无限免费的服务承诺。</p>
+<p>SDK 与库版本在实现时根据官方支持固定到 lockfile，并实测 MCP、认证、JSON 校验和上传路径的 CPU / 内存。Free 的每次 CPU 预算可能影响实际可公布上限；部署必须公布可正常验证的 limits。</p>
+<p>大型资料不走 D1 单行，分页查询有相应索引，原信不以一个可覆盖的大 JSON 保存。Queues 只能作短期交付提示；资料与 Feed 持久保留。无需为基础 MCP 引入常驻 Agent 或 Durable Objects。</p>
+<h2 id="15-性质与验证边界">15. 性质与验证边界</h2>
+<p>完整定义、前置条件、随机操作与反例见 <a href="/rfc/properties/">RFC-0001 性质计划</a>。首批性质：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>ID</th>
+<th>承诺</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P01</td>
+<td>跨 Space 与未授予资源不可读写</td>
+</tr>
+<tr>
+<td>P02</td>
+<td>同主体、同操作、同请求、同内容只有一个稳定发布结果</td>
+</tr>
+<tr>
+<td>P03</td>
+<td>同幂等键不同内容没有覆盖或第二次发布</td>
+</tr>
+<tr>
+<td>P04</td>
+<td>保存成功后内容可读且重启可恢复</td>
+</tr>
+<tr>
+<td>P05</td>
+<td>未最终发布内容不进入 Feed</td>
+</tr>
+<tr>
+<td>P06</td>
+<td>较晚完成的提交不因较早保留序号而漏收</td>
+</tr>
+<tr>
+<td>P07</td>
+<td>Consumer 的检查点与回执彼此独立</td>
+</tr>
+<tr>
+<td>P08</td>
+<td>回执单调，重复 ACK 没有重复变化事件</td>
+</tr>
+<tr>
+<td>P09</td>
+<td>同一稳定视图分页完整，篡改或跨视图游标被拒绝</td>
+</tr>
+<tr>
+<td>P10</td>
+<td>记忆 CAS 冲突没有 head、Revision 或 Feed 副作用</td>
+</tr>
+<tr>
+<td>P11</td>
+<td>Snapshot 替换完整集合，Delta 的遗漏不表达删除</td>
+</tr>
+<tr>
+<td>P12</td>
+<td>来源删除不影响其他 Collection，旧同步不能自动复活</td>
+</tr>
+<tr>
+<td>P13</td>
+<td>未封存或被修改资料不能进入已发布记录</td>
+</tr>
+<tr>
+<td>P14</td>
+<td>令牌轮换保留幂等身份，撤销后旧键也不能读取结果</td>
+</tr>
+<tr>
+<td>P15</td>
+<td>Webhook 成败不改变核心业务记录，事件重投保持身份</td>
+</tr>
+<tr>
+<td>P16</td>
+<td>同领域操作跨 MCP / HTTP 重试仍只有一个发布</td>
+</tr>
+<tr>
+<td>P17</td>
+<td>收取后未处理的输入在 Consumer 恢复后仍可接续</td>
+</tr>
+<tr>
+<td>P18</td>
+<td>允许的保留与授权条件成立时，恢复后可以补收全部已发布可见项</td>
+</tr>
+</tbody>
+</table></div><p>P01–P16 主要是安全性 / 不变量；P17 涉及客户端持久队列契约；P18 是带恢复与保留前置条件的活性目标。随机测试提高发现反例的能力，不构成对所有网络和故障的数学证明。</p>
+<h2 id="16-关键端到端与反例场景">16. 关键端到端与反例场景</h2>
+<h3 id="161-首个异步闭环">16.1 首个异步闭环</h3>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">sequenceDiagram
+    participant A as Agent A
+    participant W as Waypost
+    participant C as Client B
+    A-&gt;&gt;W: send(request_id, 内容)
+    W-&gt;&gt;W: 准备正文，最终发布 Feed
+    W--&gt;&gt;A: committed
+    Note over A,C: 两方可以先后上线
+    C-&gt;&gt;W: inbox(cursor)
+    W--&gt;&gt;C: 稳定 item 与正文引用
+    C-&gt;&gt;C: 保存原内容和待处理项
+    C-&gt;&gt;W: ACK received 与 checkpoint
+    C-&gt;&gt;W: send(回信，引用原消息)
+    W--&gt;&gt;C: committed
+    A-&gt;&gt;W: 下次读取自己的 inbox
+    W--&gt;&gt;A: 回信
+    A-&gt;&gt;W: 保存后 ACK
+</code></pre>
+</details><h3 id="162-必须保留的游标反例">16.2 必须保留的游标反例</h3>
+<p><code>保留 A → 发布 B → Consumer 读到 B → A 完成发布 → Consumer 继续读</code></p>
+<p>A 必须拥有晚于 B 的最终发布序号并被后续读到。若实现先为 A 分配可见序号，它可能被 Consumer 已越过的游标漏掉，这是不合规实现。</p>
+<h3 id="163-并发记忆反例">16.3 并发记忆反例</h3>
+<p>两次不同 request 都基于 revision 3 发布不同内容；它们并发等待 Blob 后进入提交。</p>
+<p>最多一个成功成为 revision 4，另一个返回 revision conflict。失败者不能产生 revision 5、幽灵 Feed 或隐藏覆盖。若它后来基于 revision 4 进行真实合并，应使用新的请求并提供 expected revision 4。</p>
+<h3 id="164-独立消费者反例">16.4 独立消费者反例</h3>
+<p>两个有权读取同一消息的 Consumer A、B。A 收取并 ACK 后，B 仍能从自己的起点读取；A 的 processed 不能标记 B 已处理。B 收到的原消息与 A 相同。</p>
+<h3 id="165-局部记忆反例">16.5 局部记忆反例</h3>
+<p>Collection 有 <code>a</code>、<code>b</code>。来源只能读到 <code>a</code> 时，发布更新 <code>a</code> 的 delta；<code>b</code> 保持。只有明确完整 snapshot 或明确 delete 才能删除来源内的 <code>b</code>。</p>
+<h2 id="17-实施阶段与验收">17. 实施阶段与验收</h2>
+<h3 id="m0最小可靠消息闭环">M0：最小可靠消息闭环</h3>
+<p>实现受限认证与控制面、describe、send、message.get、inbox、ACK、status；先本地模型和测试，再 D1/R2 真实适配。</p>
+<p>门槛：P01–P09、P14、P16–P18 相关性质通过，存储故障点测试通过，两个独立消费身份完成离线往返。不能用 mock 成功代替实际发布验证。</p>
+<h3 id="m1资料记忆与通用-skill">M1：资料、记忆与通用 Skill</h3>
+<p>实现 Blob 上传封存、snapshot / delta / read / 导出资料，补齐 P10–P13。发布通用 Skill，并以真实兼容宿主完成消息和记忆流程。</p>
+<p>门槛：普通消息、完整快照、局部 delta、冲突、空 snapshot、重复提交、令牌轮换、拒绝未授权资料等契约成立；消费者可恢复尚未处理的输入。实际免费部署的容量与 CPU 经过测量。</p>
+<h3 id="m2可选通知">M2：可选通知</h3>
+<p>在核心内容稳定后增加通用 Webhook、订阅持久化和 P15。只有验证任意回调的安全访问条件后开放；随后按需求增加宿主适配，不要求所有 MCP 客户端支持同一扩展。</p>
+<h3 id="rfc-实现完成条件">RFC 实现完成条件</h3>
+<ul>
+<li>M0 与 M1 全部必需能力、性质、错误和独立客户端验收完成。</li>
+<li>未实现的可选功能如实公布为不支持。</li>
+<li>schema、服务、Skill 与示例保持同版，测试可以从失败种子重现。</li>
+<li>没有未解决的权限、发布、游标或记忆 CAS 语义冲突。</li>
+<li>README 区分本地验证、云端验证和真实宿主验证的范围。</li>
+</ul>
+<h2 id="18-替代方案与选择理由">18. 替代方案与选择理由</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>方案</th>
+<th>判断</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只把 JSON 写进对象桶，客户端反复列桶</td>
+<td>初期容易演示，但身份、可见发布、游标与多消费者状态缺乏统一契约；本方案使用独立元数据索引</td>
+</tr>
+<tr>
+<td>全部内容存数据库</td>
+<td>部署简单，但大文件与原始记忆影响行大小和容量；正文与资料采用 BlobStore</td>
+</tr>
+<tr>
+<td>强制长期 WebSocket 或宿主事件扩展</td>
+<td>增加接入限制，离线恢复仍需要持久内容；本方案保留 pull 基础</td>
+</tr>
+<tr>
+<td>每次读取后删除队列消息</td>
+<td>不适合独立消费者和迁移；收取确认不删除原记录</td>
+</tr>
+<tr>
+<td>以 token ID 定义提交身份</td>
+<td>轮换会破坏幂等连续性；使用稳定 Actor</td>
+</tr>
+<tr>
+<td>部分 snapshot 隐含保留或删除</td>
+<td>难判定来源意图；完整 snapshot 与 delta 分开</td>
+</tr>
+<tr>
+<td>服务负责判断任务完成和合并偏好</td>
+<td>将平台语义和模型判断放进通用通信核心；由参与方负责，服务记录事实</td>
+</tr>
+<tr>
+<td>首版采用多服务、联邦或全面事件溯源</td>
+<td>超出当前验证目标；先单实例和明确公共操作</td>
+</tr>
+</tbody>
+</table></div><h2 id="19-安全运维与待决策事项">19. 安全、运维与待决策事项</h2>
+<h3 id="191-安全边界">19.1 安全边界</h3>
+<p>服务验证鉴权、收件与资料范围；客户端验证来源数据与渲染方式。外部消息和记忆不是 system instruction，也不是用户授权凭证。</p>
+<p>桶保持私有；所有读取经当前授权校验；日志记录资源 ID 与失败类型，不记录原凭据、签名密钥或默认完整记忆内容。跨空间数据和存在性不通过摘要去重或错误细节泄漏。</p>
+<p>动作请求与动作结果都可以作为消息，但发送“允许执行”不绕过宿主原有权限。Waypost 无权替接收方保证外部副作用恰好一次。</p>
+<h3 id="192-可观察性与恢复">19.2 可观察性与恢复</h3>
+<p>观察提交积压、准备但未发布资料、已发布但未收取项、Consumer 检查点、记忆冲突、回调失败与容量；报告准确阶段，不用单个“成功率”混合保存和处理。</p>
+<p>元数据与 Blob 都需要备份与恢复验证。只恢复 D1 而缺少所引用 Blob 不符合 P04；不匹配备份应报告不可读资源并停止声称完整恢复。</p>
+<h3 id="193-尚未定稿但不阻塞-m0m1-的选择">19.3 尚未定稿，但不阻塞 M0/M1 的选择</h3>
+<p>开源许可证、官方托管注册与计费、公众账号恢复、物理删除与备份保留政策、端到端加密、超大集合、客户端 UI 与后续宿主接法，均可另写 RFC。</p>
+<p>这些项不能被实现者静默扩张成新协议。需要改变已定义语义时，修订本 RFC 或提出后续 RFC。</p>
+<h2 id="20-参考资料">20. 参考资料</h2>
+<p>资料核对：2026-10-11。版本和正文事实见<a href="/rfc/protocol-research/">研究笔记</a>。下面的来源指导本项目的选择，不直接替代 Waypost 的契约。</p>
+<ul>
+<li><a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a>、<a href="https://www.rfc-editor.org/rfc/rfc8174">RFC 8174</a>：规范性关键词。</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8785">RFC 8785</a>：JSON canonicalization。</li>
+<li><a href="https://github.com/matrix-org/matrix-spec-proposals/blob/main/README.md">Matrix MSC README</a>、<a href="https://github.com/matrix-org/matrix-spec-proposals/blob/main/MSC_CHECKLIST.md">MSC Checklist</a>：可实施提案写法。</li>
+<li><a href="https://spec.matrix.org/v1.19/client-server-api/">Matrix v1.19 Client-Server</a>：同步与请求重传先例。</li>
+<li><a href="https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md">CloudEvents v1.0.2</a>：事件格式与稳定身份。</li>
+<li><a href="https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md">Standard Webhooks</a>：签名与通知交付。</li>
+<li><a href="https://developers.cloudflare.com/agents/model-context-protocol/apis/handler-api/">Cloudflare MCP handler</a>：首个 MCP 部署方式。</li>
+<li><a href="https://developers.cloudflare.com/d1/worker-api/d1-database/">D1 API</a>、<a href="https://developers.cloudflare.com/r2/api/workers/workers-api-reference/">R2 API</a>：存储适配边界。</li>
+<li><a href="https://developers.openai.com/plugins/build/mcp-events">OpenAI MCP Events</a>：可选宿主事件适配参考。</li>
+<li><a href="https://fast-check.dev/docs/advanced/model-based-testing/">fast-check model-based testing</a>：性质测试方法。</li>
+</ul>
+</div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>让交接留下来，让工作接着走。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/rfc/">RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

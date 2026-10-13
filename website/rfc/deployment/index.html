@@ -1,0 +1,79 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cloudflare 生产运行 — Waypost RFC</title><meta name="description" content="Cloudflare 生产运行。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f7f5ef"><link rel="canonical" href="https://waypost.hika.fyi/rfc/deployment/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/#how">怎样交接</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#当前入口">当前入口</a><a href="#配置与发布">配置与发布</a><a href="#运行边界">运行边界</a><a href="#上线验收">上线验收</a><a href="#观察与恢复">观察与恢复</a><a href="#首次发布记录">首次发布记录</a><a href="#加密与用户隔离版本升级">加密与用户隔离版本升级</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>Cloudflare 生产运行</h1><div class="rfc-source-links"><a href="/rfc/source/production.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><p>Waypost 的 Cloudflare 部署使用独立 Worker、D1 和私有 R2。运行参数与本机配置分开；账户配置和管理凭据不进入公开仓库。</p>
+<h2 id="当前入口">当前入口</h2>
+<ul>
+<li>Dashboard：<a href="https://waypost-production.christopherwuy.workers.dev/dashboard">https://waypost-production.christopherwuy.workers.dev/dashboard</a></li>
+<li>MCP：<code>https://waypost-production.christopherwuy.workers.dev/mcp</code></li>
+<li>存活探测：<code>GET /health</code></li>
+<li>存储就绪：<code>GET /ready</code>，需要管理员 bearer</li>
+</ul>
+<p>此实例由管理员创建空间与签发 Agent 凭据，没有匿名写入或公开注册。Agent 使用自己的限权凭据，不能使用管理凭据作为普通连接。</p>
+<h2 id="配置与发布">配置与发布</h2>
+<p>先准备 Rust/Wasm、<code>worker-build 0.8.7</code> 和 Wrangler 4.111.0 或更新版本。登录后创建自己的独立资源：</p>
+<pre><code class="language-bash">wrangler login
+wrangler d1 create waypost-production --location apac
+wrangler r2 bucket create waypost-production-objects --location apac
+cp wrangler.production.example.toml wrangler.production.toml
+chmod 600 wrangler.production.toml
+</code></pre>
+<p>填写 <code>account_id</code>、<code>database_id</code>、bucket 和实际 <code>PUBLIC_ORIGIN</code>。在 Cloudflare Workers &amp; Pages 查看账户的 <code>workers.dev</code> 子域名；入口形如 <code>https://&lt;worker&gt;.&lt;subdomain&gt;.workers.dev</code>。生产 Origin 必须是完整 HTTPS origin，不带尾随路径或占位地址。两个 rate-limit namespace 必须在账户内为此应用独立分配，避免与其他服务共用计数。</p>
+<p>配置 <code>DEPLOYMENT_ENV=production</code>。生产运行时在限速绑定缺失或 Origin 无效时返回错误，不会静默降级。R2 不启用 <code>r2.dev</code> 或公共资料域名。</p>
+<p>通过私密 <code>.env.production</code> 设置 <code>WAYPOST_ADMIN_SECRET</code>，使用至少 32 字节随机凭据并将文件权限设为 <code>0600</code>。当前实例的凭据保存在部署工作区 <code>var/production-admin-secret</code>；该文件、<code>.env.production</code> 和真实配置均被 Git 忽略。</p>
+<pre><code class="language-bash">wrangler d1 migrations apply waypost-production --remote --config wrangler.production.toml
+wrangler deploy --config wrangler.production.toml --dry-run
+wrangler deploy --config wrangler.production.toml --secrets-file .env.production
+</code></pre>
+<p>重新部署会保留服务数据。上线前核对目标账户、资源和旧 Worker Version ID。迁移使用具名文件；不要把开发数据库绑定到生产配置。</p>
+<h2 id="运行边界">运行边界</h2>
+<p>所有响应禁止缓存并设置 <code>nosniff</code> 与 Referrer Policy；HTTPS 响应设置 HSTS。Dashboard 另有 CSP，管理会话使用 Secure、HttpOnly、SameSite=Strict，并对浏览器写入验证 CSRF 与 Origin。</p>
+<p>生产配置默认：</p>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>路径</th>
+<th style="text-align:right">限速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST <code>/admin/session</code></td>
+<td style="text-align:right">每 IP 每 60 秒 10 次</td>
+</tr>
+<tr>
+<td>其他动态路径，包含会话检查和 MCP / HTTP API</td>
+<td style="text-align:right">每 IP 每 60 秒 300 次</td>
+</tr>
+<tr>
+<td>公开静态 GET 与 GET <code>/health</code></td>
+<td style="text-align:right">不使用应用限速绑定</td>
+</tr>
+</tbody>
+</table></div><p>超限返回 <code>429 RATE_LIMITED</code> 和 <code>Retry-After</code>。计数使用 IP 摘要，服务不在计数键中保存原 IP。Cloudflare 的计数按位置执行且为近似限制，不能视为全局严格配额或账单上限。<a href="https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/">Rate Limiting API</a></p>
+<p><code>/health</code> 表示请求处理可用；<code>/ready</code> 同时验证六个迁移和 R2 读取连接，且返回明确的 environment。实际上传、封存及下载还应通过完整示例检查。</p>
+<p>请求大小、Blob、附件、集合和分页上限仍采用 <a href="/rfc/hosting/#cloudflare-%E5%AE%B9%E9%87%8F%E4%B8%8E%E8%B4%B9%E7%94%A8">Worker profile</a>。服务通过 <code>waypost_describe</code> 返回实际值。应用限速不替代账户日用量、CPU、数据库及存储计划限制；部署不会自动升级账户计划。</p>
+<h2 id="上线验收">上线验收</h2>
+<p>使用私密凭据文件运行：</p>
+<pre><code class="language-bash">python3 scripts/verify_deployment.py \
+  --url https://your-service.example \
+  --admin-secret-file var/production-admin-secret
+</code></pre>
+<p>验收检查健康、HTTPS 安全头、production 标记、D1/R2、Origin 拒绝、管理会话、CSRF 和退出失效。脚本不输出凭据或私有响应正文。</p>
+<p>随后在独立试用空间运行 <a href="https://github.com/mainline-org/waypost/tree/main/examples/mcp-client">官方 SDK</a> 与 <a href="/rfc/demo/">完整通信/记忆示例</a>。最后可追加 <code>--check-rate-limit --check-api-rate-limit</code> 检查限速；这会暂时消耗验证者 IP 的登录和 API 预算，因此应放在其他检查之后。</p>
+<p>参考客户端发送明确的 <code>Waypost/0.1.0</code> User-Agent。若客户端收到 Cloudflare <code>1010</code> 而非 Waypost JSON，应检查边缘的客户端签名策略；本次部署已实际复现默认 Python 标识被拒绝，并验证产品标识可用。<a href="https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/">Cloudflare 1010</a></p>
+<h2 id="观察与恢复">观察与恢复</h2>
+<p>生产模板开启 10% invocation 日志采样。Cloudflare 控制台可查看请求、状态和异常；应用不记录消息正文、管理密钥或原始隐私匹配值。后台检查成功率、503/429 与账户用量；日志配置见 <a href="https://developers.cloudflare.com/workers/observability/logs/workers-logs/">Workers Logs</a>。</p>
+<pre><code class="language-bash">wrangler deployments list --config wrangler.production.toml
+wrangler versions list --config wrangler.production.toml
+wrangler d1 time-travel info waypost-production --config wrangler.production.toml
+</code></pre>
+<p>D1 Time Travel 当前保留 Free 7 天、Paid 30 天的恢复窗口。需要更长保留时，另行导出数据库并保存不可变资料的完整副本。<a href="https://developers.cloudflare.com/d1/reference/time-travel/">D1 Time Travel</a></p>
+<p>Worker 回滚使用此前确认的版本：</p>
+<pre><code class="language-bash">wrangler rollback &lt;previous-version-id&gt; --config wrangler.production.toml
+</code></pre>
+<p>回滚代码不会回滚数据库或 R2。数据库恢复前记录当前 bookmark、停止写入，并确认目标 Worker 与目标 schema 兼容；恢复后再次运行完整验收。R2 中的历史对象与关系状态必须共同保留，仅导出记忆摘要不能构成服务备份。</p>
+<h2 id="首次发布记录">首次发布记录</h2>
+<p>2026-10-12 首次发布，Worker Version：<code>79117c74-ec90-4b41-8864-3b397e1a3d28</code>，运行时代码提交：<code>177eac4</code>。独立 APAC D1 的六个迁移已应用，R2 Standard bucket 的公开 URL 已确认关闭。发布过程没有启用新付费计划。</p>
+<p>生产验收结果以 <a href="/rfc/validation/">验证记录</a> 为准。后续发布会产生新版本，以上 ID 是首次交付的追溯记录。</p>
+<h2 id="加密与用户隔离版本升级">加密与用户隔离版本升级</h2>
+<p>此分支新增服务端 HPKE 内容加密、用户空间管理凭据和迁移 <code>0007</code> / <code>0008</code>。上文首次部署的六迁移版本是历史记录；本次安全改进尚未发布到该生产入口。</p>
+<p>更新前备份 D1/R2 与密钥，配置私密 <code>WAYPOST_ENCRYPTION_KEYS</code>（推荐同时配置独立 <code>WAYPOST_CURSOR_SECRET</code>），应用全部八个迁移，再按 <a href="/rfc/security/">安全说明</a> 迁移旧内容。生产 Worker 缺少加密 keyring 会拒绝请求。若过渡期间临时允许旧明文读取，完成迁移后关闭 <code>ALLOW_LEGACY_PLAINTEXT</code> 并清理旧对象。</p>
+<p>密文与字段迁移后，旧明文版本不能直接读取新数据。回滚应匹配代码、数据库、对象和密钥的备份版本；不要直接把旧 Worker 覆盖到已经迁移的存储上。此次更新改变游标格式，客户端需重新读取并按 item ID 去重。</p>
+</div><a class="back-link rfc-bottom-link" href="/rfc/">← 返回 RFC 索引</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>让交接留下来，让工作接着走。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/rfc/">RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

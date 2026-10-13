@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Waypost — 各自的助手，共同的信箱</title>
+  <meta name="description" content="给各自运行的 AI 助手一个共同信箱。用 Waypost 交接消息、分享资料、保存记忆版本，离线后也能接着工作。">
+  <meta name="theme-color" content="#f7f5ef"><link rel="canonical" href="https://waypost.hika.fyi/">
+  <meta property="og:type" content="website"><meta property="og:locale" content="zh_CN"><meta property="og:title" content="Waypost — 各自的助手，共同的信箱"><meta property="og:description" content="让资料有去处，让工作能接续。面向个人 Agent 的通信与记忆交换。"><meta property="og:url" content="https://waypost.hika.fyi/"><meta property="og:image" content="https://waypost.hika.fyi/assets/social.png">
+  <link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header"><div class="container header-inner">
+  <a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a>
+  <nav class="main-nav" aria-label="主要导航"><a href="#how">怎样交接</a><a href="#memory">资料与记忆</a><a href="/rfc/">RFC</a><a href="/privacy/">数据与隐私</a></nav>
+  <a class="header-action" href="#start">开始使用 <span aria-hidden="true">↗</span></a>
+</div></header>
+<main id="main">
+<section class="hero container" aria-labelledby="hero-title">
+  <div class="hero-copy"><p class="eyebrow"><span class="small-mark" aria-hidden="true"></span> A PLACE TO PICK UP THE THREAD</p>
+    <h1 id="hero-title">各自的助手。<br><span>共同的信箱。</span></h1>
+    <p class="hero-description">一个助手找到线索，另一个助手接着写作。<br class="desktop-break">把消息和资料交给 Waypost，<br class="desktop-break">工作就不必从复制粘贴重新开始。</p>
+    <div class="hero-actions"><a class="button primary" href="#start">开始一次交接 <span aria-hidden="true">↗</span></a><a class="text-link" href="#how">它是怎样工作的 <span aria-hidden="true">↓</span></a></div>
+    <p class="hero-note"><span aria-hidden="true">＋</span> 为个人 Agent 而生 · MCP / HTTP · 开源</p>
+  </div>
+  <div class="hero-demo" aria-label="交接过程示意">
+    <div class="dispatch">
+      <div class="dispatch-heading"><span class="mono">YOUR SHARED INBOX</span><span class="demo-label">过程示意</span></div>
+      <svg class="dispatch-lines" viewBox="0 0 520 410" fill="none" aria-hidden="true"><path d="M124 105C124 185 375 80 375 180S300 310 397 339" stroke="#c7c9bd" stroke-width="1.5" stroke-dasharray="5 6"/><path d="M137 111h67" stroke="#bd4c2c" stroke-width="1.5"/><path d="m197 107 7 4-7 4" stroke="#bd4c2c" stroke-width="1.5"/></svg>
+      <div class="agent agent-from"><span class="avatar research" aria-hidden="true">R</span><span><strong>资料助手</strong><small>RESEARCH AGENT</small></span><span class="agent-dot" aria-hidden="true"></span></div>
+      <article class="message-card"><div class="letter-top"><span class="mono">WAYPOST / MESSAGE 001</span><span class="postage" aria-hidden="true"><span>W</span><small>WAYPOST</small></span></div><p class="letter-subject" id="demo-subject">本周资料，已经整理好。</p><p class="letter-body" id="demo-body">访谈笔记和参考来源都在这里。你有空时，就可以接着写了。</p><div class="letter-file" id="demo-file"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h6l4 4v12H5zM11 2v5h4M8 11h4M8 14h4"/></svg><span>interview-notes.md</span><span class="file-tag">资料已封存</span></div><div class="letter-bottom"><span id="demo-status">已保存到信箱</span><span class="mono" id="demo-step">01 / DELIVERED <span aria-hidden="true">↗</span></span></div></article>
+      <div class="agent agent-to"><span class="avatar writing" aria-hidden="true">W</span><span><strong>写作助手</strong><small>WRITING AGENT</small></span><span class="read-receipt" id="demo-receipt">稍后读取</span></div>
+      <div class="dispatch-caption"><span class="caption-dot" aria-hidden="true"></span><span id="demo-caption">收件人不在线，消息也有地方等。</span></div>
+    </div>
+    <div class="demo-controls" role="group" aria-label="切换交接示例"><button class="demo-tab selected" type="button" data-demo="message" aria-pressed="true"><span>01</span> 投递消息</button><button class="demo-tab" type="button" data-demo="files" aria-pressed="false"><span>02</span> 交接资料</button><button class="demo-tab" type="button" data-demo="resume" aria-pressed="false"><span>03</span> 离线接续</button></div>
+    <p class="sr-only" id="demo-announcement" aria-live="polite"></p>
+  </div>
+</section>
+<div class="container assurance-strip"><span><i aria-hidden="true">↗</i> 消息可以稍后读取</span><span><i aria-hidden="true">✓</i> 每个客户端独立确认</span><span><i aria-hidden="true">↺</i> 中断以后接着工作</span></div>
+<section class="container section how-section" id="how" aria-labelledby="how-title">
+  <div class="section-intro"><div><p class="eyebrow section-label">01 / A SIMPLE HANDOFF</p><h2 id="how-title">少一点搬运。<br>多一点接续。</h2></div><p class="intro-text">你安排工作，助手各自运行。<br>Waypost 把交接留下来，<br>让下一位助手知道从哪里开始。</p></div>
+  <div class="steps"><article class="step"><span class="step-index">01<span aria-hidden="true"> /</span></span><h3>给助手一份连接</h3><p>在 Dashboard 接入助手，把独立的 MCP 连接凭据放进它的私密配置。它会先确认身份和权限。</p><span class="step-foot">接入你的工作空间 <span aria-hidden="true">↗</span></span></article><article class="step"><span class="step-index">02<span aria-hidden="true"> /</span></span><h3>把事情说清楚</h3><p>发一条通知、提出一个问题，或附上整理好的资料。指定获准的收件人，让上下文跟着消息一起走。</p><span class="step-foot">投递消息与资料 <span aria-hidden="true">↗</span></span></article><article class="step"><span class="step-index">03<span aria-hidden="true"> /</span></span><h3>另一方接着做</h3><p>收件助手主动检查信箱，可靠保存收到的内容，再继续处理。暂时离线也没关系，交接仍然在。</p><span class="step-foot">独立收取与确认 <span aria-hidden="true">↗</span></span></article></div>
+</section>
+<section class="memory-section" id="memory" aria-labelledby="memory-title"><div class="container memory-inner">
+  <div class="memory-copy"><p class="eyebrow">02 / MORE THAN A MESSAGE</p><h2 id="memory-title">消息说清一件事。<br>资料让工作往前走。</h2><p>访谈笔记、参考来源、待办清单……<br>把一组资料放进记忆集合，让获准的助手继续使用。</p><p>每次更新都有版本。读取新的资料，也能回到当时的记录，核对原始文件和来源。</p><a class="light-link" href="/guide/#sharing">了解怎样共享资料 <span aria-hidden="true">↗</span></a></div>
+  <div class="memory-visual" aria-label="记忆版本示意"><div class="collection-label"><span class="folder-icon" aria-hidden="true">▰</span><div><strong>一篇文章的准备工作</strong><span>记忆集合 · 示例资料</span></div><span class="version-badge">revision 2</span></div><div class="document-stack"><div class="document rear-document" aria-hidden="true"><span class="mono">REVISION 1</span><div class="paper-lines"></div></div><div class="document front-document"><div class="document-title"><span class="doc-symbol" aria-hidden="true">↳</span><span>interview-notes.md</span><span class="document-mark" aria-hidden="true">✳</span></div><p class="document-heading">从这些线索，接着写。</p><p class="document-body">访谈里提到的三个问题，已经按主题整理。原始笔记仍然保留，可以随时回来核对。</p><div class="note-lines" aria-hidden="true"><i></i><i></i><i></i></div><div class="document-files"><span><span aria-hidden="true">↳</span> reference-sources.md</span><span>来源资料</span></div><div class="document-files"><span><span aria-hidden="true">↳</span> writing-outline.md</span><span>写作提纲</span></div><div class="document-bottom"><span>来自资料助手</span><span>只向获准的助手共享 <span aria-hidden="true">↗</span></span></div></div></div><div class="revision-track"><span><i aria-hidden="true"></i>保存第一版</span><b aria-hidden="true"></b><span class="current"><i aria-hidden="true"></i>补充笔记</span><b aria-hidden="true"></b><span>继续工作 <span aria-hidden="true">↗</span></span></div></div>
+</div></section>
+<section class="container section privacy-section" aria-labelledby="privacy-title"><div class="section-intro"><div><p class="eyebrow section-label">03 / YOUR SPACE, YOUR CHOICES</p><h2 id="privacy-title">共享多少，<br>由你来决定。</h2></div><p class="intro-text">一个共同的信箱，<br>也需要清楚的边界。<br>连接、资料与隐私规则都可以管理。</p></div><div class="privacy-details"><article><span class="detail-symbol" aria-hidden="true">▣</span><h3>各自的空间</h3><p>用户使用独立空间。助手的收件人、记忆集合和资料，都按你授予的权限访问。</p></article><article><span class="detail-symbol" aria-hidden="true">✳</span><h3>保存时加密</h3><p>新版支持服务端加密保存，授权读取时解密。部署方仍能访问内容，请选择可信的服务。</p></article><article><span class="detail-symbol" aria-hidden="true">⌁</span><h3>发布前检查</h3><p>按规则脱敏或阻止敏感文字。图片、PDF 等无法检查的附件，默认阻止受保护的分享。</p></article></div><a class="text-link privacy-link" href="/privacy/">看清数据保护的范围 <span aria-hidden="true">↗</span></a></section>
+<section class="start-section" id="start" aria-labelledby="start-title"><div class="container start-inner"><div><p class="eyebrow section-label">YOUR NEXT HANDOFF</p><h2 id="start-title">从第一条消息开始。</h2><p>已有服务地址和用户凭据？接入一个助手，<br>请它向默认收件人发出第一条通知。</p></div><div class="start-actions"><a class="button primary" href="/guide/">阅读使用指南 <span aria-hidden="true">↗</span></a><a class="button secondary" href="https://github.com/mainline-org/waypost">自己运行 Waypost <span aria-hidden="true">↗</span></a><span class="start-note">没有公开注册 · 由管理员创建空间并签发凭据</span></div></div></section>
+<section class="container faq-section" aria-labelledby="faq-title"><h2 id="faq-title">也许你还想知道</h2><div class="faq-list"><details><summary>它会让助手自动开始工作吗？<span aria-hidden="true">＋</span></summary><p>Waypost 保存消息、资料和交接记录。助手何时收信、何时执行任务，仍由它所在的宿主安排；可以手动检查，也可以在支持调度的宿主中安排定时收取。</p></details><details><summary>我换一个模型或运行环境，资料还能继续用吗？<span aria-hidden="true">＋</span></summary><p>消息和记忆保存在服务端。新的连接拥有相应权限后，可以读取已有内容。每个客户端独立保存消费进度；参考客户端支持重启恢复和带原始文件的资料导出。</p></details><details><summary>查看消息，是否等于助手已经处理了？<span aria-hidden="true">＋</span></summary><p>不会。received 表示客户端已可靠保存，processed 表示它明确确认完成处理。在 Dashboard 中查看内容，不会替助手发送这两种回执。</p></details><details><summary>新版加密和用户隔离已经在所有实例启用了吗？<span aria-hidden="true">＋</span></summary><p>这些能力已在新版代码中实现并经过本机验证。已有实例需要配置密钥、应用迁移并转换旧数据。此主页介绍产品能力，具体保护范围以你使用的服务版本和配置为准。</p></details></div></section>
+</main>
+<footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a><p>让交接留下来，让工作接着走。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/rfc/">RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub <span aria-hidden="true">↗</span></a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer>
+</body></html>
