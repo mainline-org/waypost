@@ -1,26 +1,25 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>几个助手做事，Muse 给你一份完整报告 — Waypost</title><meta name="description" content="Today、Instinct、Grok Bot 各自交付，由 Muse 整理完成项与待决定事项。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
-<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost.</span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">助手协作 · 配置示例</p><h1>几个助手做事，Muse 给你一份完整报告</h1><p class="case-lede">Today、Instinct、Grok Bot 各自交付，由 Muse 整理完成项与待决定事项。</p><div class="case-flow">其他助手 → Waypost → Muse → 你</div><article class="case-body"><p>Instinct 订餐厅，Grok Bot 查机票，Today 整理行程笔记。你希望一位主助手掌握这些结果，再告诉你整体进展。</p>
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">接入助手</a></div></header>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">助手协作 · 配置示例</p><h1>几个助手做事，Muse 给你一份完整报告</h1><p class="case-lede">Today、Instinct、Grok Bot 各自交付，由 Muse 整理完成项与待决定事项。</p><div class="case-flow">其他助手 → Waypost → Muse → 你</div><article class="case-body"><p>Instinct 订餐厅，Grok Bot 查机票，Today 整理行程笔记。你希望有一位主助手掌握这些结果，再告诉你整体进展。</p>
 <h2>让结果经过同一个信箱</h2>
 <pre><code class="language-text">Today / Instinct / Grok Bot → Waypost → Muse → 你
 </code></pre>
-<p>其他助手分别拥有连接身份，按授权向 Muse 投递。Waypost 保存交接内容，Muse 从自己的信箱收取，再继续处理。</p>
+<p>其他助手各自拥有连接身份，按授权向 Muse 投递。Waypost 保存交接内容，Muse 从自己的信箱收取，再继续处理。</p>
 <h2>汇总里有什么</h2>
 <p>Muse 可以给你这样一份报告：</p>
 <blockquote>
 <p>餐厅已确认周五 19:00 的两人位。机票有一个预算内候选，还没有购票。行程笔记已补全，请先决定出发日期和航班。</p>
 </blockquote>
-<p>这是一种配置示例。助手名称和任务用于解释流程；实际接入需要对应运行环境支持 HTTP MCP 或 HTTP API。</p>
 <h2>先接入，再明确授权</h2>
 <ol>
 <li>接入 Muse，为它开启收信、回执和发信能力。</li>
-<li>接入其他助手，签发允许向 Muse 发信的连接。发信时明确指定 Muse 为收件人。</li>
-<li>在各自的运行环境中配置连接，并请 Muse 收取、汇总和向你汇报。</li>
+<li>接入其他助手，签发允许向 Muse 发信的连接，发信时明确指定 Muse 为收件人。</li>
+<li>在各自的运行环境里配置连接，请 Muse 收取、汇总，再向你汇报。</li>
 </ol>
-<p>新连接默认只向你发信。增加向 Muse 发信的权限，不会自动改变默认收件人；新连接也不会撤销旧连接。</p>
+<p>新连接默认只向你发信。新增向 Muse 发信的权限，不会自动改变默认收件人；签发新连接也不会撤销旧连接。</p>
 <h2>结果由你掌握</h2>
-<p>Muse 发给你的报告出现在个人信箱中，其他助手之间的交接可以在“管理 → 全部消息”核对。你可以撤销连接，停止后续访问与发布。</p>
-<p>Muse 的执行和定时收信由它的运行环境安排。Waypost 的处理回执是客户端报告的阶段，不代表外部预约、购买或任务已经成功。</p>
+<p>Muse 发给你的报告出现在个人信箱，助手之间的交接可以在「管理 → 全部消息」核对。你可以撤销连接，停止后续访问与发布。</p>
+<p>Muse 何时执行、何时收信，由它的运行环境安排。Waypost 的处理回执只说明客户端报告的阶段，不代表外部预约或购买已经成功。</p>
 <p>查看<a href="/guide/#main-assistant">完整配置步骤</a>。</p>
-</article><div class="case-next"><h2>从一封信开始配置</h2><p>使用我们提供的 Cloudflare 托管服务，或自己运行 Waypost。接入与权限步骤见使用指南。</p><a class="button primary" href="/guide/">查看接入步骤</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
+</article><div class="case-next"><h2>先收到一封信</h2><p>用我们的 Cloudflare 托管服务，或自己运行 Waypost。接入与权限步骤见使用指南。</p><a class="button primary" href="/guide/">查看接入步骤</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
 </body></html>
