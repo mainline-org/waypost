@@ -14,7 +14,7 @@ const sections = {
   tokens:      {title: '连接凭据', note: '每份连接的权限、有效期和撤销记录。'},
   submissions: {title: '提交状态', note: '按请求 ID 找回原来的提交结果。'},
   receipts:    {title: '处理回执', note: '客户端报告的收取与处理阶段。'},
-  access:      {title: ot('accessTitle'), note: ot('requestHelp')},
+  access:      {title: ot('accessTitle'), note: ot('accessHelp')},
 };
 function el(tag, text, cls) {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node;}
 function button(text, action, cls = 'secondary') {const node = el('button', text, cls); node.type = 'button'; node.addEventListener('click', () => busy(node, action)); return node;}
@@ -30,7 +30,7 @@ async function api(path, method = 'GET', body) {
   return result.data;
 }
 function showLogin() {authEpoch++; loadEpoch++; primaryState = {revision: 0, primary_assistant: null}; operator = false; csrf = ''; spaces = []; actors = []; sid = ''; tab = 'inbox'; finishCreation(); $('#detail').close(); $('#detail-title').textContent = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
-async function entered(session) {authEpoch++; primaryState = {revision: 0, primary_assistant: null}; spaces = []; actors = []; sid = ''; $('#space').replaceChildren(); $('#content').replaceChildren(); $('#add-agent').hidden = true; pageSize = Math.max(1, Math.min(20, session.limits?.max_page_size || 20)); operator = session.operator; $('#invite-user').hidden = !operator; $('#access-requests-tab').hidden = !operator; csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
+async function entered(session) {authEpoch++; primaryState = {revision: 0, primary_assistant: null}; spaces = []; actors = []; sid = ''; $('#space').replaceChildren(); $('#content').replaceChildren(); $('#add-agent').hidden = true; pageSize = Math.max(1, Math.min(20, session.limits?.max_page_size || 20)); operator = session.operator; $('#service-management').hidden = !operator; $('#operator-label').hidden = !operator; $('#invite-user').hidden = !operator; $('#access-requests-tab').hidden = !operator; csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
 async function registry(kind, space_id) {
   let cursor = null; const items = [];
   do {const result = await api('/admin/v0/registry', 'POST', {kind, ...(space_id ? {space_id} : {}), cursor, limit: pageSize}); items.push(...result.items); cursor = result.has_more ? result.next_cursor : null;} while (cursor);
@@ -42,6 +42,7 @@ async function loadSpaces() {
   for (const space of spaces) {const opt = el('option', space.display_name); opt.value = space.space_id; select.append(opt);}
   if (!spaces.some(s => s.space_id === sid)) sid = spaces[0]?.space_id || '';
   select.value = sid;
+  select.disabled = spaces.length < 2;
   await load();
 }
 async function load(append = false) {
@@ -66,8 +67,9 @@ async function load(append = false) {
   cursor = result.next_cursor;
   if (!result.items.length && !append) {
     const empty = el('div', undefined, 'empty');
-    empty.append(el('h2', tab === 'inbox' ? '等助手的第一封信。' : '这里还没有记录。'), el('p', tab === 'inbox' ? '接入助手后，请它向默认收件人发一条消息。' : '开始使用后，对应内容会保存在这里。'));
-    if (tab === 'inbox') empty.append(button('接入助手', () => openOnboarding(), ''));
+    const primary = primaryState.primary_assistant;
+    empty.append(el('h2', tab === 'inbox' ? (primary ? ot('waitingPrimary') : '等助手的第一封信。') : '这里还没有记录。'), el('p', tab === 'inbox' ? (primary ? `${primary.display_name} · ${ot('waitingPrimaryHelp')}` : '接入助手后，请它向默认收件人发一条消息。') : '开始使用后，对应内容会保存在这里。'));
+    if (tab === 'inbox') empty.append(primary ? button(ot('viewAssistants'), async () => {tab = 'agents'; await load();}, '') : button('接入助手', () => openOnboarding(), ''));
     $('#content').append(empty);
   } else if (result.items.length) {
     if (['inbox', 'messages'].includes(tab)) renderMessages(result.items); else renderTable(result.items);
@@ -105,20 +107,23 @@ async function readMessage(item) {
   openDetail(message.subject, body);
 }
 function renderAgents() {
+  const guide = el('div', undefined, 'role-guide');
+  guide.append(el('h2', primaryState.primary_assistant ? `${ot('primary')}: ${primaryState.primary_assistant.display_name}` : ot('primaryStart')), el('p', ot('roleHelp')), el('p', ot('rolePermissions'), 'fine'));
+  $('#content').append(guide);
   const grid = el('div', undefined, 'grid'), other = el('div', undefined, 'grid');
   for (const actor of actors) {
     const card = el('article', undefined, 'card agent');
     const avatar = el('div', actor.display_name.slice(0, 1), 'avatar'); card.append(avatar, el('h2', actor.display_name));
     card.append(el('span', actor.disabled ? '接入已暂停' : actor.kind === 'agent' ? (primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primary') : ot('connected')) : actor.kind === 'user' ? '用户入口' : '客户端', `pill${actor.disabled ? ' disabled' : ''}`));
-    card.append(el('p', '收到它的真实来信，才算接入成功。', 'fine'));
+    card.append(el('p', actor.kind === 'agent' && primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primaryCardHelp') : ot('connectedCardHelp'), 'fine'));
     const actions = el('div', undefined, 'row');
     const spaceId = sid, epoch = loadEpoch;
-    actions.append(button('最近来信', async () => {
-      const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'inbox', actor_id: actor.actor_id, limit: pageSize});
+    actions.append(button('最近交付', async () => {
+      const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'messages', actor_id: actor.actor_id, limit: pageSize});
       if (spaceId !== sid || epoch !== loadEpoch) return;
       const list = el('section');
       if (result.items.length) renderMessages(result.items, list); else list.append(el('p', '还没有收到它的消息。在助手的运行环境里填好连接，再请它发第一封信。'));
-      openDetail(`${actor.display_name} · 最近来信`, list);
+      openDetail(`${actor.display_name} · 最近交付`, list);
     }));
     if (!actor.disabled && actor.kind === 'agent') {actions.append(actionButton('manage-connections', '连接与权限', () => manageConnections(actor))); if (primaryState.primary_assistant?.actor_id !== actor.actor_id) actions.append(actionButton('choose-primary', ot('choosePrimary'), () => choosePrimary(actor))); else actions.append(actionButton('configure-primary', ot('configurePrimary'), () => manageConnections(actor, 'primary')));}
     if (!actor.disabled && actor.kind === 'agent') actions.append(button('暂停接入', async () => {
@@ -345,15 +350,21 @@ $('#add-agent').addEventListener('click', () => busy($('#add-agent'), () => open
 startOnboardingSession();
 
 $('#owner-credential').addEventListener('click', () => busy($('#owner-credential'), async () => {
-  const epoch = authEpoch;
+  const epoch = authEpoch, spaceId = sid;
   if (!sid) throw new Error('先创建或选择一个用户空间。');
   const path = `/admin/v0/spaces/${sid}/owner-credential`;
   const current = await api(path);
-  if (epoch !== authEpoch) return;
-  if (current.version && !confirm('重新签发会使旧用户凭据和登录会话失效。继续签发？')) return;
-  const result = await api(path, 'POST', {expected_version: current.version});
-  if (epoch !== authEpoch) return;
-  showDetail('用户登录凭据 · 只展示一次', {dashboard_url: `${location.origin}/dashboard`, space_id: sid, credential: result.credential, note: '这份凭据只管理当前用户空间。通过私密渠道交给该用户；助手使用另外签发的连接凭据。'});
+  if (epoch !== authEpoch || spaceId !== sid) return;
+  const form = el('form'), name = spaces.find(s => s.space_id === spaceId)?.display_name || spaceId;
+  form.append(el('h3', name), el('p', ot('ownerPurpose')), el('p', current.active ? ot('ownerResetEffect') : current.version ? ot('ownerInactiveEffect') : ot('ownerFirstEffect')));
+  const submit = el('button', current.active ? ot('ownerReset') : current.version ? ot('ownerRestore') : ot('ownerCreate')); submit.type = 'submit'; form.append(submit);
+  form.addEventListener('submit', event => {event.preventDefault(); busy(submit, async () => {
+    if (epoch !== authEpoch || spaceId !== sid) return;
+    const result = await api(path, 'POST', {expected_version: current.version});
+    if (epoch !== authEpoch || spaceId !== sid) return;
+    openDetail(ot('ownerResult'), el('p', name), el('p', ot('ownerSave')), el('pre', result.credential), el('p', `${ot('loginAddress')}: ${location.origin}/dashboard`));
+  });});
+  openDetail(ot('ownerTitle'), form);
 }));
 
 async function choosePrimary(actor) {
@@ -382,7 +393,7 @@ function openInvitation(access = null) {
   if (pending) {if (pending.type !== 'invite') throw new Error('请先恢复其他尚未完成的创建。'); return createInvitation(pending.name);}
   const form = el('form'), label = el('label', ot('inviteName')), input = el('input'), submit = el('button', ot('inviteCreate'));
   input.required = true; input.value = '个人空间'; label.append(input); submit.type = 'submit';
-  form.append(label, el('p', ot('invitePrivate')), submit);
+  form.append(el('p', ot('invitePurpose')), label, el('p', ot('invitePrivate')), submit);
   form.addEventListener('submit', event => {event.preventDefault(); if (input.value.trim()) busy(submit, () => createInvitation(input.value.trim(), access));});
   openDetail(ot('inviteTitle'), form);
 }

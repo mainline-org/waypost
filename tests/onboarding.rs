@@ -3,6 +3,50 @@ use common::*;
 use serde_json::json;
 
 #[tokio::test(flavor = "current_thread")]
+async fn operator_can_read_space_sign_in_status_without_issuing_or_disclosing_a_key() {
+    let f = Fixture::new().await;
+    let path = format!("/admin/v0/spaces/{}/owner-credential", f.sid());
+    let before = call(&f.app, "GET", &path, ADMIN, json!({})).await;
+    assert_eq!(before["version"], 0);
+    assert_eq!(before["active"], false);
+    let issued = call(&f.app, "POST", &path, ADMIN, json!({"expected_version":0})).await;
+    let status = call(&f.app, "GET", &path, ADMIN, json!({})).await;
+    assert_eq!(status["version"], 1);
+    assert_eq!(status["active"], true);
+    assert_eq!(status.as_object().unwrap().len(), 3);
+    assert!(
+        !status
+            .to_string()
+            .contains(issued["credential"].as_str().unwrap())
+    );
+    assert_eq!(
+        raw(
+            &f.app,
+            "GET",
+            &path,
+            issued["credential"].as_str().unwrap(),
+            json!({})
+        )
+        .await
+        .0,
+        404
+    );
+    call(&f.app, "POST", &path, ADMIN, json!({"expected_version":1})).await;
+    assert_eq!(
+        raw(
+            &f.app,
+            "POST",
+            "/admin/v0/registry",
+            issued["credential"].as_str().unwrap(),
+            json!({"kind":"spaces"})
+        )
+        .await
+        .0,
+        401
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn explicit_connection_default_delivers_to_primary_without_exposing_owner_inbox() {
     let f = Fixture::new().await;
     let root = format!("/admin/v0/spaces/{}", f.sid());

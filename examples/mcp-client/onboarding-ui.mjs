@@ -35,7 +35,7 @@ try{
  assert.equal(requester.location.hash,'');
  const operator=page(),d=operator.document;
  await new Promise(r=>setTimeout(r,150));d.querySelector('#secret').value=admin;submit(d.querySelector('#login-form'));
- await wait(()=>!d.querySelector('#app').hidden);d.querySelector('[data-tab=access]').click();
+ await wait(()=>!d.querySelector('#app').hidden);d.querySelector('#service-management').open=true;d.querySelector('[data-tab=access]').click();
  await wait(()=>[...d.querySelectorAll('#content .card')].some(c=>c.textContent.includes(email)));
  const requestCard=[...d.querySelectorAll('#content .card')].find(c=>c.textContent.includes(email));requestCard.querySelector('[data-action=approve-access]').click();
  await wait(()=>d.querySelector('#detail-body form'));submit(d.querySelector('#detail-body form'));

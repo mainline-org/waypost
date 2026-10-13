@@ -230,12 +230,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 let rows = self
                     .db
                     .query(Statement::new(
-                        "SELECT version FROM space_admin_credentials WHERE space_id=?",
+                        "SELECT version,revoked_at FROM space_admin_credentials WHERE space_id=?",
                         vec![sid.into()],
                     ))
                     .await?;
                 return Ok(
-                    json!({"space_id":sid,"version":rows.first().map(|r|integer(r,"version")).transpose()?.unwrap_or(0)}),
+                    json!({"space_id":sid,"version":rows.first().map(|r|integer(r,"version")).transpose()?.unwrap_or(0),"active":rows.first().is_some_and(|r|matches!(r.get("revoked_at"),Some(Sql::Null)))}),
                 );
             }
             if request.method == "DELETE" && parts.len() == 5 && parts[4] == "owner-credential" {
