@@ -6,3 +6,5 @@ check.py
 .gitignore
 build_docs.py
 requirements-docs.txt
+
+build_use_cases.py

@@ -4,6 +4,7 @@
 
 - `/`：「你的助手信箱」介绍主页，以及结果投递、资料交接、Muse 汇总三个可切换示例。
 - `/guide/`：用户使用指南。
+- `/use-cases/`：五个配置示例，展示餐厅预约、机票查价、Muse 汇总、资料版本与恢复。
 - `/privacy/`：数据与隐私保护范围。
 - `/rfc/`：三个 RFC、性质计划和配套实现文档的完整网页，保留原文下载与章节目录。
 
@@ -26,3 +27,5 @@
 ## 更新 RFC 页面
 
 安装 `requirements-docs.txt` 的构建依赖后，运行 `python3 website/build_docs.py`，再运行 `python3 website/check.py`。生成的 HTML 与公开 Markdown 原文一同保存在仓库中，因此 Vercel 发布仍不需要依赖安装或服务端执行。渲染只读取显式列出的公开文档，关闭 Markdown 原始 HTML，图示保留 Mermaid 源码。
+
+更新使用场景：安装文档构建依赖后运行 `python3 website/build_use_cases.py`，再运行 `python3 website/check.py`。案例原文保存在 `docs/use-cases/`，仅展示配置方式，不宣称第三方专用集成或真实订单验证。

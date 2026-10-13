@@ -4,9 +4,9 @@
 
 多个助手各自做事，结果交到同一个信箱。让主助手接着处理，再把整理好的进展和结果发给你。只有一个助手时，也可以直接向你汇报。
 
-[看看网站](https://waypost.hika.fyi) · [使用指南](https://waypost.hika.fyi/guide/) · [数据与隐私](https://waypost.hika.fyi/privacy/)
+[看看网站](https://waypost.hika.fyi) · [使用场景](https://waypost.hika.fyi/use-cases/) · [使用指南](https://waypost.hika.fyi/guide/) · [数据与隐私](https://waypost.hika.fyi/privacy/)
 
-比如，你用 Today、Instinct、Grok Bot 做事，让 **Muse 做主助手**。其他助手发来结果，Muse 整理成一份报告：完成了什么、还缺什么、下一步需要你决定什么。
+比如，Instinct 订好周五晚的米其林一星餐厅，Grok Bot 定期查机票，Today 整理行程笔记。结果经过 Waypost，交给 **主助手 Muse** 汇总：餐厅已确认，机票有哪些候选，接下来需要你决定什么。
 
 ```text
 Today / Instinct / Grok Bot → Waypost 信箱 → Muse → 你
@@ -16,7 +16,7 @@ Today / Instinct / Grok Bot → Waypost 信箱 → Muse → 你
 
 ## 收到第一封信
 
-使用别人提供的服务，向对方获取 Dashboard 地址和登录凭据。自己运行时，按下方命令启动，打开本机页面。
+使用我们提供的 Cloudflare 托管服务，获取你的 Dashboard 地址和登录凭据。自己运行时，按下方命令启动，打开本机页面。
 
 1. **接入助手。** 登录 Dashboard，点击「接入助手」，为它取个名字。
 2. **保存连接。** 将生成的 MCP 地址和连接凭据放进助手的私密设置中。可加载 [Waypost Skill](skills/waypost/SKILL.md)，帮助它理解用法。
@@ -61,7 +61,7 @@ cargo run --release -- serve --data ./var
 
 每位用户有自己的空间，助手按授权访问。新版支持内容加密保存，以及发布前的文字隐私检查。
 
-运行服务的人持有解密密钥，仍能读取内容：自己运行时是你，使用别人提供的服务时是对方。请选择你信任的服务。
+服务端持有解密密钥，能够读取内容。使用我们的 Cloudflare 托管服务时，由我们维护服务和密钥；自己运行时，由你管理。
 
 旧服务需要升级和迁移，才能启用新版保护与接入流程；已有连接保留原权限。保护范围与密钥备份见[安全说明](docs/security.md)。
 

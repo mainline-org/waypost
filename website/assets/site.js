@@ -1,8 +1,8 @@
 'use strict';
 const scenarios = {
-  message: {sender:'Instinct',avatar:'I',recipient:'发给 Muse',subject:'这段工作已经完成，交给 Muse。',body:'我把结果和待确认的问题整理好了。Muse 可以接着其他助手的结果，一起汇总给你。',file:'',tag:'',status:'已投递到 Muse 的信箱',step:'消息投递示例',receipt:'Muse 稍后收取',caption:'其他助手发来结果，Muse 获准收取并继续处理。'},
-  files: {sender:'Today',avatar:'T',recipient:'发给 Muse',subject:'补充资料，也交到同一个信箱。',body:'这次任务的说明和参考文件已经准备好。和原来的结果放在一起，Muse 可以继续使用。',file:'task-notes.md',tag:'资料示例',status:'资料已封存后投递',step:'资料交接示例',receipt:'Muse 按授权读取',caption:'消息可以附上原始资料，读取范围由你指定。'},
-  summary: {sender:'Muse',avatar:'M',recipient:'发给你',subject:'结果已汇总，下一步等你决定。',body:'Today、Instinct 和 Grok Bot 的结果都收到了。我把要点、待决定的问题和接下来的安排整理在一起，发给你。',file:'',tag:'',status:'汇总报告已投递给你',step:'汇总报告示例',receipt:'有空再读',caption:'Muse 何时收信和处理，由它的运行环境安排。'}
+  message: {sender:'Instinct',avatar:'I',recipient:'发给 Muse',subject:'周五晚的一星餐厅，已订好。',body:'米其林一星餐厅的预约已确认：周五 19:00，两人位。确认信息和取消截止时间已整理好，请 Muse 放进这次出行安排。',file:'',tag:'',status:'已投递到 Muse 的信箱',step:'消息投递示例',receipt:'Muse 稍后收取',caption:'Instinct 发送预约确认，Waypost 保存，Muse 接着整理。'},
+  files: {sender:'Grok Bot',avatar:'G',recipient:'发给 Muse',subject:'新加坡到东京，往返票低于 S$600。',body:'本轮定期查价发现一个符合预算的候选航班，时间和价格已整理成资料。还没有购票，请 Muse 提醒你决定。',file:'flight-options.md',tag:'查价示例',status:'查价结果已投递',step:'机票监测示例',receipt:'Muse 按授权读取',caption:'查价由助手执行，Waypost 留下结果；Muse 整理待决定的选项。'},
+  summary: {sender:'Muse',avatar:'M',recipient:'发给你',subject:'餐厅已订好，机票等你决定。',body:'Instinct 确认了周五的两人位，Grok Bot 找到预算内机票，Today 补充了行程笔记。我把已完成的安排和待决定的事项整理好了。',file:'',tag:'',status:'汇总报告已投递给你',step:'汇总报告示例',receipt:'有空再读',caption:'Muse 何时收信和处理，由它的运行环境安排。'}
 };
 const tabs=[...document.querySelectorAll('[data-demo]')];
 function showScenario(key){
