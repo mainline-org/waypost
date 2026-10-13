@@ -40,6 +40,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             || parts[..4] != ["", "admin", "v0", "spaces"]
             || parts[4] != space
             || parts.get(5) == Some(&"owner-credential")
+            || parts.get(5) == Some(&"invitations")
         {
             return Err(Error::not_found());
         }
@@ -51,6 +52,9 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             .trim_matches('/')
             .split('/')
             .collect::<Vec<_>>();
+        if request.method == "POST" && request.path == "/admin/v0/access-requests" {
+            return self.access_requests(body).await;
+        }
         if request.method == "POST" && request.path == "/admin/v0/maintenance/encrypt" {
             return self.encrypt_existing(body).await;
         }
@@ -140,6 +144,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let sid = parts[3];
             check_id(sid)?;
             self.admin_space(sid).await?;
+            if parts.len() >= 5 && parts[4] == "invitations" {
+                return self.space_invitation(sid, request, &parts, body).await;
+            }
+            if parts.len() == 5 && parts[4] == "primary-assistant" {
+                return self.primary_assistant(sid, request, body).await;
+            }
             if request.method == "POST" && parts.len() == 5 && parts[4] == "collections" {
                 fields(
                     &body,
@@ -351,6 +361,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         "scopes",
                         "resource_grants",
                         "expires_at",
+                        "default_recipient_id",
                     ],
                 )?;
                 let actor = required(&body, "actor_id")?;
@@ -426,6 +437,30 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         return Err(Error::not_found());
                     }
                 }
+                let default_recipient = match body.get("default_recipient_id") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(id)) => {
+                        check_id(id)?;
+                        self.admin_actor(sid, id).await?;
+                        let allowed = if grants.recipient_ids.is_empty() {
+                            vec![
+                                self.admin_space(sid).await?["default_actor_id"]
+                                    .as_str()
+                                    .ok_or_else(Error::storage)?
+                                    .to_owned(),
+                            ]
+                        } else {
+                            grants.recipient_ids.clone()
+                        };
+                        if !allowed.contains(id) {
+                            return Err(Error::invalid(
+                                "Default recipient must be explicitly authorized.",
+                            ));
+                        }
+                        Some(id.clone())
+                    }
+                    _ => return Err(Error::invalid("Invalid default recipient.")),
+                };
                 let now = self.clock.now_ms();
                 let expires = match body.get("expires_at") {
                     None | Some(Value::Null) => None,
@@ -461,7 +496,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 )?];
                 q.extend(push_rows(
                     "tokens",
-                    "token_id,token_digest,space_id,actor_id,consumer_id,expires_at,created_at",
+                    "token_id,token_digest,space_id,actor_id,consumer_id,expires_at,created_at,default_recipient_id",
                     vec![vec![
                         tid.clone().into(),
                         digest.into(),
@@ -470,6 +505,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                         consumer.into(),
                         expires.into(),
                         now.into(),
+                        default_recipient.into(),
                     ]],
                     Some(guard.clone()),
                 ));

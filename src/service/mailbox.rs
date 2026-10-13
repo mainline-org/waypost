@@ -203,10 +203,19 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "Too many attachments for this deployment.",
             ));
         }
-        let mut recipients = input
-            .recipient_ids
-            .clone()
-            .unwrap_or_else(|| vec![p.default_actor_id.clone()]);
+        let previous = self
+            .submission(p, "message.send", &input.request_id)
+            .await?;
+        let mut recipients = if let Some(ids) = &input.recipient_ids {
+            ids.clone()
+        } else if let Some(row) = &previous {
+            // A request's omitted destination is fixed by its first reservation.
+            // New connections still have to authorize that original destination.
+            self.db.query(Statement::new("SELECT actor_id FROM submission_recipients WHERE submission_id=? ORDER BY actor_id",vec![text(row,"submission_id")?.into()])).await?
+                .iter().map(|r|text(r,"actor_id")).collect::<Result<Vec<_>>>()?
+        } else {
+            vec![p.default_recipient_id.clone()]
+        };
         recipients.sort();
         input.recipient_ids = Some(recipients.clone());
         let allowed = if p.grants.recipient_ids.is_empty() {
@@ -217,9 +226,6 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         if recipients.iter().any(|id| !allowed.contains(id)) {
             return Err(Error::forbidden());
         }
-        let previous = self
-            .submission(p, "message.send", &input.request_id)
-            .await?;
         let mut new_thread = input.thread_id.is_none() && input.in_reply_to.is_none();
         if let Some(original) = &input.in_reply_to {
             if let Some(row) = previous

@@ -8,6 +8,7 @@
 <!-- No favicon link: the Worker serves assets under `img-src 'self'` only, so a
      data: URI is blocked. The brand mark is inlined below instead. -->
 <link rel="stylesheet" href="/dashboard/style.css">
+<script defer src="/dashboard/onboarding-copy.js"></script>
 <script defer src="/dashboard/app.js"></script>
 </head>
 <body>
@@ -27,6 +28,7 @@
       </label>
       <button>打开信箱</button>
     </form>
+    <button id="request-access" type="button" class="secondary">申请邀请</button>
     <p id="login-error" class="notice notice-inline" role="status"></p>
     <p class="fine">托管服务的登录凭据由我们发放。自己运行时，按运行说明从数据目录取得。助手使用另外签发的连接凭据。</p>
   </div>
@@ -45,6 +47,7 @@
     </label>
     <button id="owner-credential" type="button" class="secondary" hidden>用户登录凭据</button>
     <button id="new-space" class="secondary">＋ 新建空间</button>
+    <button id="invite-user" type="button" class="secondary" hidden>邀请使用</button>
 
     <nav aria-label="主要功能">
       <button data-tab="inbox">信箱</button>
@@ -61,6 +64,7 @@
         <button data-tab="tokens">连接凭据</button>
         <button data-tab="submissions">提交状态</button>
         <button data-tab="receipts">处理回执</button>
+        <button id="access-requests-tab" data-tab="access" hidden>邀请请求</button>
       </nav>
     </details>
 

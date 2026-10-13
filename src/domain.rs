@@ -259,6 +259,7 @@ pub struct Principal {
     pub credential_version: i64,
     pub view_revision: i64,
     pub default_actor_id: String,
+    pub default_recipient_id: String,
     pub view: String,
     pub scopes: Vec<String>,
     pub grants: ResourceGrants,

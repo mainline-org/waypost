@@ -17,10 +17,12 @@ mod admin;
 mod blobs;
 mod dashboard;
 mod encryption;
+mod invitations;
 mod mailbox;
 mod maintenance;
 mod mcp;
 mod memory;
+mod onboarding;
 mod privacy;
 mod receipts;
 
@@ -116,6 +118,12 @@ impl<D: Database, O: ObjectStore> App<D, O> {
     pub async fn handle(&self, request: Request) -> Response {
         if let Some(response) = self.dashboard_asset(&request) {
             return response;
+        }
+        if request.path == "/admin/access-request" {
+            return self.access_request(&request).await;
+        }
+        if request.path == "/admin/invitation" {
+            return self.redeem_invitation(&request).await;
         }
         if request.path == "/admin/session" {
             return self.admin_session(&request).await;
@@ -284,6 +292,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             credential_version: integer(row, "credential_version")?,
             view_revision: integer(row, "view_revision")?,
             default_actor_id: text(row, "default_actor_id")?,
+            default_recipient_id: text(row, "default_recipient_id")?,
             view: text(row, "view")?,
             scopes,
             grants,
@@ -325,7 +334,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         self.current(p).await?;
         Ok(
-            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_actor_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"memory_collections":collections,"memory_collections_has_more":more,"limits":self.limits,"capabilities":{"privacy_filtering":true,"mailbox":true,"receipts":true,"blob_upload":true,"memory_snapshot":true,"memory_delta":true,"webhook_events":false,"oauth":false,"server_export":false}}),
+            json!({"api_version":"0.1","space_id":p.space_id,"actor_id":p.actor_id,"consumer_id":p.consumer_id,"view_revision":p.view_revision,"default_recipient_id":p.default_recipient_id,"allowed_recipient_ids":if p.grants.recipient_ids.is_empty(){vec![p.default_actor_id.clone()]}else{p.grants.recipient_ids.clone()},"scopes":p.scopes,"resource_grants":p.grants,"memory_collections":collections,"memory_collections_has_more":more,"limits":self.limits,"capabilities":{"privacy_filtering":true,"mailbox":true,"receipts":true,"blob_upload":true,"memory_snapshot":true,"memory_delta":true,"webhook_events":false,"oauth":false,"server_export":false}}),
         )
     }
     pub(crate) fn sign_cursor(&self, payload: &str) -> Result<String> {

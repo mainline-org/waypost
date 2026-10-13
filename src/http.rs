@@ -29,11 +29,18 @@ pub(crate) fn classify<'a>(method: &str, path: &'a str) -> Route<'a> {
     match (method, path) {
         (
             "GET",
-            "/" | "/dashboard" | "/dashboard/" | "/dashboard/app.js" | "/dashboard/style.css",
+            "/"
+            | "/dashboard"
+            | "/dashboard/"
+            | "/dashboard/app.js"
+            | "/dashboard/style.css"
+            | "/dashboard/onboarding-copy.js",
         ) => return PublicAsset,
         ("GET", "/health") => return Health,
         ("GET", "/ready") => return Ready,
-        (_, "/admin/session") => return AdminSession,
+        (_, "/admin/session" | "/admin/invitation" | "/admin/access-request") => {
+            return AdminSession;
+        }
         (_, "/mcp") => return Mcp,
         ("GET", "/v0/describe") => return Describe,
         ("POST", "/v0/uploads") => return UploadPrepare,
