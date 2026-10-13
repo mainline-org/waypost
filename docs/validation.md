@@ -72,3 +72,13 @@ cargo clippy --no-default-features --features cloudflare --target wasm32-unknown
 36 项 Rust 测试、原生和 Wasm clippy 已通过。另使用 JSDOM 与隔离的真实本机 HTTP 服务执行登录、默认接入、首次报告、恶意正文纯文本显示、显式六项能力签发、资料集合创建、到期选择、关闭凭据详情和退出清理。默认接入的实际请求只有 `message.send`，没有创建资料集合。官网三个示例的选择、ARIA 与键盘切换检查通过；17 页静态链接、锚点和公开文档快照检查通过。
 
 本轮 Browser 未连接，DOM 检查不等于浏览器视觉验收；新版响应式布局尚未做实际浏览器视口检查。本次只更新 Vercel 介绍网站，新 Dashboard 与管理检查接口尚未升级到旧 Cloudflare 生产实例。任务授权与人工批准仍未实现。
+
+## 邀请与主助手接入验证
+
+在独立 worktree 实现，避免覆盖并行 i18n。新增五项 HTTP 回归覆盖默认投递目标与发信范围、主助手选择的版本检查与空间限制、一次性领取与个人会话、邀请撤销/替换/到期/所有者变化、使用申请的隐私与幂等。
+
+41 项 Rust 测试与原生 clippy 通过。Dashboard DOM 回归在每页 20 条的公开 HTTP 契约下复现并修复了权限面板故障，也验证了后续资料页被保留。真实本机原生服务与 Workerd/D1/R2 的官方 MCP 客户端完成接入助手投递、同键恢复、主助手可靠保存后 received、汇报用户与 processed，发信连接无法读信箱。
+
+两个运行时都通过真实 HTTP + DOM 的申请、审批、邀请领取、清除 URL 片段、个人空间登录、主助手连接预设和接入助手默认投递测试。直接读取隔离 D1 的匿名统计确认申请联系方式为密文。验收模拟协作角色，没有执行实际餐厅预订，也不宣称已验证 Muse 等第三方产品。
+
+脚本为 `examples/mcp-client/handoff.mjs`、`examples/mcp-client/onboarding-ui.mjs`，已加入原生与 Worker CI。源码预审基线为 8840a0a；最终 i18n 合并、线上发布与实际验收记录需在交付时补充。

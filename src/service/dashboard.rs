@@ -13,6 +13,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "text/html; charset=utf-8",
                 include_bytes!("../../dashboard/index.html").as_slice(),
             ),
+            "/dashboard/onboarding-copy.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../../dashboard/onboarding-copy.js").as_slice(),
+            ),
             "/dashboard/app.js" => (
                 "text/javascript; charset=utf-8",
                 include_bytes!("../../dashboard/app.js").as_slice(),
@@ -56,7 +60,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         Ok(scope)
     }
-    fn csrf_token(&self, cookie: &str) -> Result<String> {
+    pub(super) fn csrf_token(&self, cookie: &str) -> Result<String> {
         let mut mac =
             Hmac::<Sha256>::new_from_slice(&self.csrf_key).map_err(|_| Error::storage())?;
         mac.update(b"waypost-admin-csrf\0");
@@ -114,7 +118,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let expires = now + 8 * 60 * 60 * 1000;
             self.db.batch(vec![Statement::new("DELETE FROM admin_sessions WHERE expires_at<=?",vec![now.into()]),Statement::new("INSERT INTO admin_sessions(session_digest,admin_fingerprint,created_at,expires_at,space_id) VALUES(?,?,?,?,?)",vec![Sha256::digest(cookie.as_bytes()).to_vec().into(),Sha256::digest(secret.as_bytes()).to_vec().into(),now.into(),expires.into(),scope.clone().into()])]).await?;
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"expires_at":stamp(expires)?,"space_id":scope,"operator":scope.is_none()}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"expires_at":stamp(expires)?,"space_id":scope,"operator":scope.is_none(),"limits":self.limits}),
                 Some(format!(
                     "waypost_admin={cookie}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=28800{secure}"
                 )),
@@ -124,7 +128,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let scope = self.admin_access(request).await?;
         if request.method == "GET" {
             return Ok((
-                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"space_id":scope,"operator":scope.is_none()}),
+                json!({"authenticated":true,"csrf_token":self.csrf_token(&cookie)?,"space_id":scope,"operator":scope.is_none(),"limits":self.limits}),
                 None,
             ));
         }
@@ -343,7 +347,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "tokens",
                 "token_id",
                 "created_at",
-                "token_id,actor_id,consumer_id,expires_at,revoked_at,created_at,(SELECT json_group_array(scope) FROM token_scopes ts WHERE ts.token_id=tokens.token_id) AS scopes_json",
+                "token_id,actor_id,consumer_id,default_recipient_id,expires_at,revoked_at,created_at,(SELECT json_group_array(scope) FROM token_scopes ts WHERE ts.token_id=tokens.token_id) AS scopes_json",
                 "actor_id",
             ),
             "blobs" => (

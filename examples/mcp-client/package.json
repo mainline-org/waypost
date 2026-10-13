@@ -1,1 +1,1 @@
-{"name":"waypost-mcp-demo","private":true,"type":"module","scripts":{"demo":"node demo.mjs"},"dependencies":{"@modelcontextprotocol/sdk":"1.32.1"}}
+{"name":"waypost-mcp-demo","private":true,"type":"module","scripts":{"demo":"node demo.mjs"},"dependencies":{"@modelcontextprotocol/sdk":"1.32.1"},"devDependencies":{"jsdom":"^26.1.0"}}

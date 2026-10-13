@@ -1,5 +1,5 @@
 // Operation-named SQL shared by SQLite and D1. Bound values never enter SQL text.
-pub const AUTHENTICATE: &str = "SELECT t.token_id,t.space_id,t.actor_id,t.consumer_id,t.authority_version AS credential_version,a.authority_version AS actor_version,c.view,c.view_revision,s.default_actor_id,
+pub const AUTHENTICATE: &str = "SELECT t.token_id,t.space_id,t.actor_id,t.consumer_id,t.authority_version AS credential_version,a.authority_version AS actor_version,c.view,c.view_revision,s.default_actor_id,COALESCE(t.default_recipient_id,s.default_actor_id) AS default_recipient_id,
  (SELECT json_group_array(scope) FROM (SELECT scope FROM token_scopes WHERE token_id=t.token_id ORDER BY scope)) AS scopes_json,
  (SELECT json_group_array(actor_id) FROM (SELECT actor_id FROM token_recipients WHERE token_id=t.token_id AND space_id=t.space_id ORDER BY actor_id)) AS recipients_json,
  (SELECT json_group_array(json_object('collection_id',collection_id,'action',action)) FROM (SELECT collection_id,action FROM token_collections WHERE token_id=t.token_id AND space_id=t.space_id ORDER BY collection_id,action)) AS collections_json,

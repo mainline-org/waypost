@@ -31,4 +31,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0008_user_administration.sql",
         include_str!("../../migrations/0008_user_administration.sql"),
     ),
+    (
+        "0009_onboarding.sql",
+        include_str!("../../migrations/0009_onboarding.sql"),
+    ),
 ];

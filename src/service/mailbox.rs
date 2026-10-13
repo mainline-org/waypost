@@ -206,7 +206,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let mut recipients = input
             .recipient_ids
             .clone()
-            .unwrap_or_else(|| vec![p.default_actor_id.clone()]);
+            .unwrap_or_else(|| vec![p.default_recipient_id.clone()]);
         recipients.sort();
         input.recipient_ids = Some(recipients.clone());
         let allowed = if p.grants.recipient_ids.is_empty() {
