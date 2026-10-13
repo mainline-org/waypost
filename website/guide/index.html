@@ -10,7 +10,7 @@
 <header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/">开始使用</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/">返回首页 <span aria-hidden="true">↗</span></a></div></header>
 <main id="main" class="container guide-layout">
 <aside class="guide-toc"><p>使用指南</p><nav aria-label="指南目录"><a href="#login">进入信箱</a><a href="#connect">接入第一个助手</a><a href="#first-message">收到第一封信</a><a href="#main-assistant">让主助手汇总</a><a href="#sharing">带上原始资料</a><a href="#resume">断开以后接着用</a><a href="#self-host">自己运行</a></nav></aside>
-<article class="guide-article"><p class="eyebrow section-label">你的助手信箱</p><h1>先接入，再交接。</h1><p class="guide-lede">先收到一个助手的来信。<br>再让 Today、Instinct、Grok Bot 的结果让主助手汇总。</p>
+<article class="guide-article"><p class="eyebrow section-label">你的助手信箱</p><h1>先接入，再交接。</h1><p class="guide-lede">先收到一个助手的来信。<br>再把接入助手的结果交给主助手汇总。</p>
 
 <section id="login"><h2>01 / 进入信箱</h2><p><strong>托管服务：</strong>先<a href="https://waypost-production.christopherwuy.workers.dev/dashboard#request-access">申请邀请</a>。收到私密链接后，打开它，保存个人登录凭据。下次用凭据进入自己的空间。</p><p><strong>自己运行：</strong>按<a href="#self-host">第 7 节</a>启动服务，打开本机 Dashboard，用数据目录里的登录凭据进入。第一次使用，先点「新建空间」。</p><p>登录凭据管理信箱。接入助手时会另外签发一份连接凭据，存进助手的私密设置。</p></section>
 
@@ -18,7 +18,7 @@
 请求头    Authorization
 请求头值  Bearer &lt;连接凭据&gt;</code></pre><p><strong>原始连接凭据只展示一次。</strong>当场存好。遗失后撤销旧连接，重新签发。可以加载 <a href="https://github.com/mainline-org/waypost/blob/main/skills/waypost/SKILL.md">Waypost Skill</a>，帮助助手理解用法。</p><p>接好后，请助手确认身份和权限：</p><div class="example-block"><p id="identity-prompt">通过 Waypost 查看我的身份、可以使用的能力和默认收件人。</p><button class="copy-button" type="button" data-copy="identity-prompt">复制这段话 ↗</button></div><p>首次接入只有发信能力。未选择主助手时，默认向你发信；向主助手交付结果，见第 4 节。</p></section>
 
-<section id="first-message"><h2>03 / 收到第一封信</h2><p>请助手发一条简单的通知：</p><div class="example-block"><p id="message-prompt">通过 Waypost 给默认收件人发一条消息，主题是「我已接入」，正文是「以后可以把进展和结果发到这里」。</p><button class="copy-button" type="button" data-copy="message-prompt">复制这段话 ↗</button></div><p>回到 Dashboard 的「信箱」。未选择主助手时，第一封信会送给你；选择了主助手，则由它收取。</p><p>只用一个助手时，这就是完整的用法：让它把阶段结果发给你，你有空时再看。</p></section>
+<section id="first-message"><h2>03 / 收到第一封信</h2><p>请助手发一条简单的通知：</p><div class="example-block"><p id="message-prompt">通过 Waypost 给默认收件人发一条消息，主题是「我已接入」，正文是「以后可以把进展和结果发到这里」。</p><button class="copy-button" type="button" data-copy="message-prompt">复制这段话 ↗</button></div><p>回到 Dashboard 的「信箱」。消息送往这份连接的默认收件人。发给你的，在「信箱」确认；发给主助手的，由它收取，也可在「管理 → 全部消息」核对。</p><p>只用一个助手时，这就是完整的用法：让它把阶段结果发给你，你有空时再看。</p></section>
 
 <section id="main-assistant"><h2>04 / 让主助手汇总</h2><p>主助手是你主要对话的助手，接入助手把各自的结果交给它。Muse 是一个例子，你现在使用的助手也可以担任主助手。</p><ol><li><strong>选定主助手。</strong>接入后，在「助手」页选择「选为主助手」，按提示签发收信、回执和发信权限。</li><li><strong>接入其他助手。</strong>默认收件人选择主助手，保存各自的连接信息。它们仍只有发信能力，不必在每封信中手填收件人 ID。</li><li><strong>请主助手汇报。</strong>让它收取结果、整理需要你决定的事，再给你发一封报告。何时执行与收信，由它的运行环境安排。</li></ol><p>选定角色不自动扩大权限。更换主助手不会改写旧连接；需要新的投递目标时，签发新连接，并明确撤销旧连接。</p><p>「信箱」显示发给你的报告。助手之间的交接，在「管理 → 全部消息」查看。</p></section>
 
