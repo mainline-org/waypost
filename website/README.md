@@ -14,6 +14,22 @@
 
 `.vercel/` 仅保存本机链接信息并被 Git 忽略。发布目录不包含凭据，页面不登录或调用 Waypost API。安全与用户隔离的文案明确标注新版和实例配置边界。
 
+## 中英文（i18n）
+
+单 URL、词典式前端国际化，无构建依赖、无第三方请求：
+
+- 文案唯一来源是 `assets/locales/en.json`（英文）与 `assets/locales/zh.json`（中文），键必须一一对应。
+- 页面 HTML 直接写英文（无 JS、未知语言、词典加载失败时都回退英文），中文由 `assets/i18n.js` 在运行时套用。
+- 语言判定优先级：`?lang=zh|en` 分享参数 ＞ `localStorage`（`waypost-lang`，仅显式切换时写入）＞ 浏览器首选语言（`navigator.languages[0]`，`zh*` 进中文）＞ 默认英文。
+- 页眉右上角有 `中文 / EN` 切换器（`data-lang` 按钮），切换即时生效并记忆；`assets/site.js` 的首页示例与复制按钮通过 `waypost:lang` 事件跟随重渲染（示例文案同时存于 `site.js` 的 `SCENARIOS`，与 `demo.*` 键保持同步）。
+- 可翻译节点：`data-i18n`（纯文本）、`data-i18n-html`（受信任的本地富文本）、`data-i18n-aria`（`aria-label`）；`<html data-page="…">` 对应 `meta.<page>.title/desc`，切换时同步更新 `document.title`、`description` 与 `og:locale`。
+- 使用场景详情页正文渲染自 `docs/use-cases/<slug>.md`（中文）与 `<slug>.en.md`（英文）；构建脚本把渲染结果回写为 `case.<slug>.bodyHtml`，改 Markdown 后必须重跑构建。
+- RFC 文档正文暂仅中文（规范原文），外壳（导航、提示、索引卡片）已双语，正文上方有英文提示说明翻译进行中。
+
+改文案后运行（需 `requirements-docs.txt` 依赖）：`python3 website/build_use_cases.py`（如改了用例 Markdown），`python3 website/build_docs.py`（如改了 RFC 源文档），最后必跑 `python3 website/check.py`。`check.py` 除原有引用与标题检查外，还校验：中英键 parity、`en.json` 无 CJK、所有 `data-i18n*` 引用存在、行内英文与 `en.json` 一致、用例正文与 Markdown 源一致、示例文案与 `site.js` 同步。
+
+Dashboard（应用）是另一套独立的同构方案，见 `dashboard/i18n.js` 头注释，改文案后跑 `python3 dashboard/check.py`；新增静态资源需同步到 `src/service/dashboard.rs` 与 `src/http.rs` 的路由表（`tests/dashboard.rs` 有覆盖）。
+
 ## 本次发布
 
 - Vercel 项目：`waypost`。

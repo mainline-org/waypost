@@ -29,7 +29,7 @@ pub(crate) fn classify<'a>(method: &str, path: &'a str) -> Route<'a> {
     match (method, path) {
         (
             "GET",
-            "/" | "/dashboard" | "/dashboard/" | "/dashboard/app.js" | "/dashboard/style.css",
+            "/" | "/dashboard" | "/dashboard/" | "/dashboard/app.js" | "/dashboard/i18n.js" | "/dashboard/style.css" | "/dashboard/locales/en.json" | "/dashboard/locales/zh.json",
         ) => return PublicAsset,
         ("GET", "/health") => return Health,
         ("GET", "/ready") => return Ready,

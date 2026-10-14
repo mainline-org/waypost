@@ -17,6 +17,18 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../../dashboard/app.js").as_slice(),
             ),
+            "/dashboard/i18n.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../../dashboard/i18n.js").as_slice(),
+            ),
+            "/dashboard/locales/en.json" => (
+                "application/json; charset=utf-8",
+                include_bytes!("../../dashboard/locales/en.json").as_slice(),
+            ),
+            "/dashboard/locales/zh.json" => (
+                "application/json; charset=utf-8",
+                include_bytes!("../../dashboard/locales/zh.json").as_slice(),
+            ),
             "/dashboard/style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../../dashboard/style.css").as_slice(),

@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en" data-page="dashboard">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f5f5f7">
-<title>你的助手信箱 · Waypost</title>
+<title>Your assistant inbox · Waypost</title>
 <!-- No favicon link: the Worker serves assets under `img-src 'self'` only, so a
      data: URI is blocked. The brand mark is inlined below instead. -->
 <link rel="stylesheet" href="/dashboard/style.css">
+<script defer src="/dashboard/i18n.js"></script>
 <script defer src="/dashboard/app.js"></script>
 </head>
 <body>
@@ -19,16 +20,17 @@
       <svg class="brand-mark" viewBox="0 0 48 48" width="34" height="34" aria-hidden="true"><rect width="48" height="48" rx="13" fill="#bb4d30"/><path d="m9 14 7 21 8-15 8 15 7-21" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="12" r="3" fill="#fff"/></svg>
       <span>waypost<span class="brand-dot">.</span></span>
     </a>
-    <h1>你的助手信箱。</h1>
-    <p class="lede">助手的进展和结果，都送到你这里。</p>
+    <div class="login-lang"><div class="lang-switch" role="group" data-i18n-aria="nav.lang" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div></div>
+    <h1 data-i18n="login.title">Your assistant inbox.</h1>
+    <p class="lede" data-i18n="login.lede">Assistant progress and results, all delivered to you.</p>
     <form id="login-form">
-      <label>用户登录凭据
+      <label><span data-i18n="login.secret">User login credential</span>
         <input id="secret" type="password" autocomplete="current-password" required>
       </label>
-      <button>打开信箱</button>
+      <button data-i18n="login.submit">Open inbox</button>
     </form>
     <p id="login-error" class="notice notice-inline" role="status"></p>
-    <p class="fine">托管服务的登录凭据由我们发放。自己运行时，按运行说明从数据目录取得。助手使用另外签发的连接凭据。</p>
+    <p class="fine" data-i18n="login.fine">Hosted-service login credentials are issued by us. Self-hosted, take them from the data directory per the run notes. Assistants use separately issued connection credentials.</p>
   </div>
 </div>
 
@@ -40,33 +42,34 @@
       <span>waypost<span class="brand-dot">.</span></span>
     </a>
 
-    <label class="space">我的空间
-      <select id="space" aria-label="选择工作空间"></select>
+    <label class="space"><span data-i18n="nav.space">My space</span>
+      <select id="space" data-i18n-aria="nav.spaceAria" aria-label="Pick a workspace"></select>
     </label>
-    <button id="owner-credential" type="button" class="secondary" hidden>用户登录凭据</button>
-    <button id="new-space" class="secondary">＋ 新建空间</button>
+    <button id="owner-credential" type="button" class="secondary" data-i18n="nav.owner" hidden>User login credential</button>
+    <button id="new-space" class="secondary" data-i18n="nav.new">＋ New space</button>
 
-    <nav aria-label="主要功能">
-      <button data-tab="inbox">信箱</button>
-      <button data-tab="agents">助手</button>
-      <button data-tab="collections">资料</button>
+    <nav data-i18n-aria="nav.main" aria-label="Primary features">
+      <button data-tab="inbox" data-i18n="nav.inbox">Inbox</button>
+      <button data-tab="agents" data-i18n="nav.agents">Assistants</button>
+      <button data-tab="collections" data-i18n="nav.collections">Library</button>
     </nav>
 
     <details id="management">
-      <summary>管理</summary>
-      <nav aria-label="管理功能">
-        <button data-tab="messages">全部消息</button>
-        <button data-tab="feed">活动记录</button>
-        <button data-tab="privacy">隐私规则</button>
-        <button data-tab="tokens">连接凭据</button>
-        <button data-tab="submissions">提交状态</button>
-        <button data-tab="receipts">处理回执</button>
+      <summary data-i18n="nav.manage">Manage</summary>
+      <nav data-i18n-aria="nav.manageNav" aria-label="Management features">
+        <button data-tab="messages" data-i18n="nav.messages">All messages</button>
+        <button data-tab="feed" data-i18n="nav.feed">Activity</button>
+        <button data-tab="privacy" data-i18n="nav.privacy">Privacy rules</button>
+        <button data-tab="tokens" data-i18n="nav.tokens">Connections</button>
+        <button data-tab="submissions" data-i18n="nav.submissions">Submissions</button>
+        <button data-tab="receipts" data-i18n="nav.receipts">Receipts</button>
       </nav>
     </details>
 
     <div class="aside-bottom">
-      <p class="fine">自己的空间，自己的助手。</p>
-      <button id="logout" class="secondary">退出登录</button>
+      <p class="fine" data-i18n="nav.fine">Your own space, your own assistants.</p>
+      <div class="lang-switch" role="group" data-i18n-aria="nav.lang" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div>
+      <button id="logout" class="secondary" data-i18n="nav.logout">Log out</button>
     </div>
   </aside>
 
@@ -74,25 +77,25 @@
     <header>
       <div>
         <span class="eyebrow">WAYPOST</span>
-        <h1 id="title">信箱</h1>
-        <p id="subtitle">助手发给你的报告和消息。</p>
+        <h1 id="title">Inbox</h1>
+        <p id="subtitle">Reports and messages assistants send you.</p>
       </div>
       <div class="actions">
-        <button id="refresh" class="secondary">刷新</button>
-        <button id="add-agent">＋ 接入助手</button>
+        <button id="refresh" class="secondary" data-i18n="head.refresh">Refresh</button>
+        <button id="add-agent" data-i18n="head.add">＋ Connect assistant</button>
       </div>
     </header>
 
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="content" aria-live="polite"></section>
-    <button id="more" class="secondary" hidden>加载更多</button>
+    <button id="more" class="secondary" data-i18n="head.more" hidden>Load more</button>
   </main>
 </div>
 
 <dialog id="detail" aria-labelledby="detail-title">
   <div class="dialog-header">
-    <h2 id="detail-title">详情</h2>
-    <button id="close-detail" class="secondary">关闭</button>
+    <h2 id="detail-title" data-i18n="head.detail">Details</h2>
+    <button id="close-detail" class="secondary" data-i18n="head.close">Close</button>
   </div>
   <p id="detail-error" class="notice notice-inline" role="status" hidden></p>
   <div id="detail-body"></div>
