@@ -2,6 +2,44 @@ mod common;
 use common::*;
 use serde_json::json;
 #[tokio::test(flavor = "current_thread")]
+async fn malformed_privacy_flags_reject_publication_instead_of_disabling_protection() {
+    for flag in ["enabled", "all_agents", "allow_uninspected_attachments"] {
+        for invalid in [
+            rusqlite::types::Value::Text("malformed".into()),
+            rusqlite::types::Value::Integer(2),
+            rusqlite::types::Value::Integer(-1),
+        ] {
+            let f = Fixture::new().await;
+            call(
+                &f.app,
+                "PUT",
+                &format!("/admin/v0/spaces/{}/privacy", f.sid()),
+                ADMIN,
+                json!({"expected_revision":0,"enabled":true,"mode":"block","all_agents":true,"rules":[{"kind":"email"}]}),
+            )
+            .await;
+            let db = rusqlite::Connection::open(f.dir.path().join("metadata.sqlite")).unwrap();
+            db.execute(
+                &format!("UPDATE privacy_policies SET {flag}=? WHERE space_id=?"),
+                rusqlite::params![invalid, f.sid()],
+            )
+            .unwrap();
+            let (status, result) = raw(
+                &f.app,
+                "POST",
+                "/v0/messages",
+                &f.writer_token,
+                json!({"request_id":"malformed-policy","kind":"info","subject":"Report","body":{"text":"Contact person@example.test"}}),
+            )
+            .await;
+            assert_eq!(status, 500, "{flag}: {invalid:?}");
+            assert_eq!(result["error"]["code"], "INTERNAL_ERROR");
+            assert_eq!(result["error"]["retryable"], false);
+            assert!(f.inbox().await["items"].as_array().unwrap().is_empty());
+        }
+    }
+}
+#[tokio::test(flavor = "current_thread")]
 async fn selected_agent_messages_are_filtered_without_exposing_originals_or_changing_retry_results()
 {
     let f = Fixture::new().await;
