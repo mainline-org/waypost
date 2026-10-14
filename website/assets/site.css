@@ -201,6 +201,17 @@ h1 {
 
 .hero h1 { margin-top: 16px; }
 
+.need-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+  margin-block: 32px 48px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+.need-list h2 { font-size: 20px; font-weight: 600; line-height: 1.5; }
+.need-list p { margin-top: 12px; color: var(--ink-2); font-size: 15px; line-height: 1.85; }
+
 .hero-description {
   font-size: 21px;
   line-height: 1.75;
@@ -1297,7 +1308,7 @@ summary > span {
   .hero-description br { display: none; }
   .hero-icon { width: 68px; height: 68px; }
 
-  .steps, .privacy-details, .capability-list { grid-template-columns: 1fr; gap: 28px; }
+  .steps, .privacy-details, .capability-list, .need-list { grid-template-columns: 1fr; gap: 28px; }
   .step h3 { margin-top: 8px; }
   .step p, .privacy-details p, .capability-list p { font-size: 16px; }
   .library-preview { padding: 20px; }
