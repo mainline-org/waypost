@@ -68,7 +68,7 @@ async function load(append = false) {
   if (!result.items.length && !append) {
     const empty = el('div', undefined, 'empty');
     const primary = primaryState.primary_assistant;
-    empty.append(el('h2', tab === 'inbox' ? (primary ? ot('waitingPrimary') : '等助手的第一封信。') : '这里还没有记录。'), el('p', tab === 'inbox' ? (primary ? `${primary.display_name} · ${ot('waitingPrimaryHelp')}` : '接入助手后，请它向默认收件人发一条消息。') : '开始使用后，对应内容会保存在这里。'));
+    empty.append(el('h2', tab === 'inbox' ? (primary ? ot(primary.disabled ? 'primaryStopped' : 'waitingPrimary') : '等助手的第一封信。') : '这里还没有记录。'), el('p', tab === 'inbox' ? (primary ? `${primary.display_name} · ${ot(primary.disabled ? 'primaryStoppedHelp' : 'waitingPrimaryHelp')}` : '接入助手后，请它向默认收件人发一条消息。') : '开始使用后，对应内容会保存在这里。'));
     if (tab === 'inbox') empty.append(primary ? button(ot('viewAssistants'), async () => {tab = 'agents'; await load();}, '') : button('接入助手', () => openOnboarding(), ''));
     $('#content').append(empty);
   } else if (result.items.length) {
@@ -108,14 +108,15 @@ async function readMessage(item) {
 }
 function renderAgents() {
   const guide = el('div', undefined, 'role-guide');
-  guide.append(el('h2', primaryState.primary_assistant ? `${ot('primary')}: ${primaryState.primary_assistant.display_name}` : ot('primaryStart')), el('p', ot('roleHelp')), el('p', ot('rolePermissions'), 'fine'));
+  const primary = primaryState.primary_assistant;
+  guide.append(el('h2', primary ? `${ot(primary.disabled ? 'primaryStopped' : 'primary')}: ${primary.display_name}` : ot('primaryStart')), el('p', primary?.disabled ? ot('primaryStoppedHelp') : ot('roleHelp')), el('p', ot('rolePermissions'), 'fine'));
   $('#content').append(guide);
   const grid = el('div', undefined, 'grid'), other = el('div', undefined, 'grid');
   for (const actor of actors) {
     const card = el('article', undefined, 'card agent');
     const avatar = el('div', actor.display_name.slice(0, 1), 'avatar'); card.append(avatar, el('h2', actor.display_name));
-    card.append(el('span', actor.disabled ? '接入已暂停' : actor.kind === 'agent' ? (primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primary') : ot('connected')) : actor.kind === 'user' ? '用户入口' : '客户端', `pill${actor.disabled ? ' disabled' : ''}`));
-    card.append(el('p', actor.kind === 'agent' && primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primaryCardHelp') : ot('connectedCardHelp'), 'fine'));
+    card.append(el('span', actor.disabled ? '已停用' : actor.kind === 'agent' ? (primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primary') : ot('connected')) : actor.kind === 'user' ? '用户入口' : '客户端', `pill${actor.disabled ? ' disabled' : ''}`));
+    card.append(el('p', actor.disabled ? ot('disabledCardHelp') : actor.kind === 'agent' && primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primaryCardHelp') : ot('connectedCardHelp'), 'fine'));
     const actions = el('div', undefined, 'row');
     const spaceId = sid, epoch = loadEpoch;
     actions.append(button('最近交付', async () => {
@@ -126,9 +127,9 @@ function renderAgents() {
       openDetail(`${actor.display_name} · 最近交付`, list);
     }));
     if (!actor.disabled && actor.kind === 'agent') {actions.append(actionButton('manage-connections', '连接与权限', () => manageConnections(actor))); if (primaryState.primary_assistant?.actor_id !== actor.actor_id) actions.append(actionButton('choose-primary', ot('choosePrimary'), () => choosePrimary(actor))); else actions.append(actionButton('configure-primary', ot('configurePrimary'), () => manageConnections(actor, 'primary')));}
-    if (!actor.disabled && actor.kind === 'agent') actions.append(button('暂停接入', async () => {
-      if (!confirm(`禁用 ${actor.display_name} 后，其凭据将失效。`)) return;
-      await api(`/admin/v0/spaces/${sid}/actors/${actor.actor_id}/disable`, 'POST', {}); await load();
+    if (!actor.disabled && actor.kind === 'agent') actions.append(button('停用助手', async () => {
+      if (!confirm(`停用 ${actor.display_name} 后，其连接全部失效。历史消息与资料保留；要继续使用，需要重新接入。继续？`)) return;
+      await api(`/admin/v0/spaces/${spaceId}/actors/${actor.actor_id}/disable`, 'POST', {}); if (spaceId === sid) await load();
     }));
     const advanced = el('details', undefined, 'technical'); advanced.append(el('summary', '身份与详细活动'), el('code', actor.actor_id), button('查看活动记录', async () => {
       const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'feed', actor_id: actor.actor_id, limit: pageSize});

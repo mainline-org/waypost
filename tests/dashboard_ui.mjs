@@ -11,6 +11,26 @@ const fixtures = {
 };
 const wait = async predicate => {for(let i=0;i<100;i++){if(predicate()) return; await new Promise(r=>setTimeout(r,10));} throw new Error('UI did not reach expected state');};
 
+test('a disabled primary assistant directs the owner to choose another instead of waiting', async () => {
+  const dom=new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'});
+  const {window:w}=dom; const d=w.document;
+  w.fetch=async(path,options={})=>{
+    const body=options.body?JSON.parse(options.body):{};
+    const data=path==='/admin/session'?{csrf_token:'test',operator:false}:path==='/admin/v0/registry'?{items:body.kind==='actors'?fixtures.actors.map(actor=>({...actor,disabled:true})):fixtures[body.kind],has_more:false}:path.endsWith('/primary-assistant')?{revision:1,primary_assistant:{actor_id:'actor-agent',display_name:'Assistant',disabled:true}}:{items:[],has_more:false};
+    return {ok:true,status:200,json:async()=>({ok:true,data})};
+  };
+  try {
+    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await wait(()=>d.querySelector('#content .empty'));
+    assert(d.querySelector('#content').textContent.includes('已停用'));
+    assert(!d.querySelector('#content').textContent.includes('等待主助手'));
+    assert.equal(d.querySelector('#service-management').hidden,true);
+    d.querySelector('#content .empty button').click();await wait(()=>d.querySelector('.role-guide'));
+    assert(d.querySelector('.role-guide').textContent.includes('选择其他助手'));
+  }finally{w.close();}
+});
+
 test('viewing space sign-in explains the target and waits for an explicit reset', async () => {
   const dom = new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'});
   const {window:w}=dom; const d=w.document; const writes=[];
