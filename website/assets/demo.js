@@ -6,6 +6,10 @@
   if (!controls.length) return;
   let primary = 'Muse', file = 'flight', revision = '2';
   const sources = {
+    preferences: {name: 'travel-preferences.md', actor: '你确认', versions: {
+      '2': '这次旅行每人的机票预算：S$600。\n一位不吃花生，预订餐厅前说明忌口。\n实际购票和修改预约，都先交给你确认。',
+      '1': '这次旅行每人的机票预算：S$600。\n忌口尚未确认，订餐厅前需要再问。\n实际购票和修改预约，都先交给你确认。'
+    }},
     flight: {name: 'flight-options.md', actor: 'Grok Bot', versions: {
       '2': '去程：11 月 6 日，09:40 起飞，14:35 落地，S$540。\n回程：11 月 13 日，S$598。预算 S$600。\n还没有购票，回程日期需要你确认。',
       '1': '去程：11 月 6 日，09:40 起飞，14:35 落地，S$560。\n回程：11 月 13 日，S$625，超过预算。\n这是上一次查价记录，尚未购票。'
@@ -59,6 +63,9 @@
     for (const button of document.querySelectorAll('[data-demo-revision]')) button.setAttribute('aria-pressed', String(button.dataset.demoRevision === revision));
   }
   for (const button of document.querySelectorAll('[data-demo-file]')) button.addEventListener('click', () => {file = button.dataset.demoFile; showFile();});
+  for (const link of document.querySelectorAll('[data-show-file]')) link.addEventListener('click', () => {
+    select('library'); file = link.dataset.showFile; revision = '2'; showFile();
+  });
   for (const button of document.querySelectorAll('[data-demo-revision]')) button.addEventListener('click', () => {revision = button.dataset.demoRevision; showFile();});
   function renderRecipient() {
     const selected = document.querySelector('[data-demo].selected')?.dataset.demo || 'message';
