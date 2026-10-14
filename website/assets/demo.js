@@ -4,7 +4,7 @@
 (() => {
   const controls = [...document.querySelectorAll('[data-preview]')];
   if (!controls.length) return;
-  let primary = 'Muse', file = 'flight', revision = '2';
+  let primary = '你常用的助手', file = 'flight', revision = '2';
   const sources = {
     preferences: {name: 'travel-preferences.md', actor: '你确认', versions: {
       '2': '这次旅行每人的机票预算：S$600。\n一位不吃花生，预订餐厅前说明忌口。\n实际购票和修改预约，都先交给你确认。',
@@ -45,7 +45,7 @@
     const target = document.getElementById('demo-agent-detail');
     const title = document.createElement('h3'), body = document.createElement('p');
     const copy = {
-      primary: [`${primary} · 主助手`, '收取接入助手的结果，可靠保存后确认收取，再整理一份报告发给你。需要明确的收信、回执和发信权限；角色选择本身不授予权限。'],
+      primary: [`${primary} · 主助手`, '收取接入助手的结果，可靠保存后确认收取，再整理一份报告发给你。需要明确的收信、回执和发信权限；角色选择本身不授予权限。' + (primary === '来信' ? ' 本页仅演示角色，来信产品接入仍在规划。' : '')],
       Instinct: ['Instinct · 接入助手', `把餐厅预约确认交给 ${primary}。这份连接只允许发信，不能读取其他助手的信箱。`],
       'Grok Bot': ['Grok Bot · 接入助手', `在自己的运行环境里定期查价，把值得决定的选项交给 ${primary}。本例另行授权了资料上传，尚未购票。`],
       Today: ['Today · 接入助手', `整理行程笔记，交给 ${primary} 接着使用。本例单独授权上传和资料更新；主助手只读获准的资料。`]
@@ -79,7 +79,7 @@
   document.getElementById('demo-primary').addEventListener('change', event => {
     primary = event.target.value;
     document.getElementById('demo-primary-name').textContent = primary;
-    document.getElementById('demo-primary-note').textContent = `正在演示把新连接的结果交给「${primary}」。真实服务仍需单独签发收信与回执权限，已有连接和已送达内容不会改写。`;
+    document.getElementById('demo-primary-note').textContent = `正在演示把新连接的结果交给「${primary}」。${primary === '来信' ? '来信接入仍在规划。' : ''}真实服务仍需单独签发收信与回执权限，已有连接和已送达内容不会改写。`;
     renderRecipient(); describeAgent('primary'); showFile();
   });
   for (const button of document.querySelectorAll('[data-demo]')) {
@@ -87,4 +87,5 @@
     button.addEventListener('keydown', event => {if (['ArrowLeft', 'ArrowRight'].includes(event.key)) renderRecipient();});
   }
   document.getElementById('demo-file').addEventListener('click', () => {select('library'); file = 'flight'; revision = '2'; showFile();});
+  renderRecipient();
 })();
