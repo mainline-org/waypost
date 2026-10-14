@@ -212,6 +212,26 @@ h1 {
 .need-list h2 { font-size: 20px; font-weight: 600; line-height: 1.5; }
 .need-list p { margin-top: 12px; color: var(--ink-2); font-size: 15px; line-height: 1.85; }
 
+.screenshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 24px; margin-top: 40px; }
+.product-shot { min-width: 0; margin: 0; }
+.product-shot:first-child { grid-column: 1 / -1; }
+.product-shot > a { display: block; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }
+.product-shot img { display: block; width: 100%; height: auto; }
+.product-shot figcaption { display: grid; gap: 6px; margin-top: 16px; font-size: 14px; color: var(--ink-2); line-height: 1.7; }
+.product-shot figcaption strong { color: var(--ink); font-size: 17px; font-weight: 500; }
+.hosting-plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 40px; }
+.hosting-plan { display: flex; flex-direction: column; align-items: flex-start; padding: 32px; border: 1px solid var(--line); border-radius: 20px; }
+.hosting-plan h3, .client-plan h3 { font-size: 24px; font-weight: 600; line-height: 1.4; }
+.hosting-plan > p:not(.plan-label), .hosting-plan li, .client-plan > p:not(.eyebrow) { color: var(--ink-2); font-size: 15px; line-height: 1.85; }
+.hosting-plan .plan-label { color: var(--accent); font-size: 12px; margin-bottom: 12px; }
+.hosting-plan > p.plan-status { color: var(--ink); font-size: 21px; margin-block: 16px; }
+.hosting-plan ul { margin-block: 20px 28px; padding-left: 20px; }
+.hosting-plan .button { margin-top: auto; }
+.hosting-plan > .text-link, .hosting-plan .plan-note { margin-top: 14px; }
+.hosting-plan > p.plan-note { font-size: 13px; color: var(--ink-2); }
+.client-plan { margin-top: 24px; padding: 32px; border-radius: 20px; background: var(--paper); }
+.client-plan h3, .client-plan > p:not(.eyebrow), .client-plan .text-link { margin-top: 16px; }
+
 .hero-description {
   font-size: 21px;
   line-height: 1.75;
@@ -1196,6 +1216,8 @@ summary > span {
 }
 
 @media (max-width: 800px) {
+  .screenshot-grid, .hosting-plans { grid-template-columns: 1fr; }
+  .hosting-plan, .client-plan { padding: 24px; }
   .container { width: calc(100% - 40px); }
   .header-inner { height: 68px; }
   .main-nav { display: none; }

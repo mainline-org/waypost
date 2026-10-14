@@ -16,6 +16,7 @@ DOCS = [
     ('docs/rfcs/0001-properties.md', 'properties', '性质与验证计划', 'RFC-0001 配套'),
     ('docs/validation.md', 'validation', '实现验证记录', 'IMPLEMENTATION'),
     ('docs/security.md', 'security', '安全与数据管理', 'IMPLEMENTATION'),
+    ('docs/design/0005-laixin-waypost-integration.md', 'laixin-integration', '来信主助手接入提案', 'PROPOSAL'),
 ]
 CORE_DOC_COUNT = len(DOCS)
 DOCS.extend([
@@ -34,7 +35,7 @@ def header():
     return '''<a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header>'''
 
 def footer():
-    return '''<footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a>RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer>'''
+    return '''<footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p>助手的进展，都送到你这里。</p></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/rfc/">RFC</a><a href="/privacy/">数据与隐私</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer>'''
 
 def shell(title, slug, body):
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} — Waypost RFC</title><meta name="description" content="{escape(title)}。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/{slug}"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body>{header()}{body}{footer()}</body></html>'''
@@ -112,6 +113,7 @@ notes = {
     'properties': ('配套验证计划', '空间隔离、幂等、发布恢复、独立消费者、CAS 与可控故障的验证契约。'),
     'validation': ('实现记录', '实际运行的测试、原生与 Cloudflare 验收，以及仍未验证的生产边界。'),
     'security': ('实现说明', '用户管理隔离、服务端加密、密钥配置、旧数据迁移与安全清理。'),
+    'laixin-integration': ('接入规划 / 尚未集成', '来信作为主助手的连接器、可靠收件、选定记忆共享、执行边界与验收。'),
 }
 for _, slug, label, category in DOCS[:CORE_DOC_COUNT]:
     status, description = notes[slug]
