@@ -2,11 +2,11 @@
 
 ## 用户、助手和部署管理员
 
-一个 Space 是一个用户的数据边界。部署管理员创建 Space，使用 `POST /admin/v0/spaces/<space_id>/owner-credential` 签发用户管理凭据，也可以在 Dashboard 的「用户登录凭据」按钮中操作。用户通过同一个 `/dashboard` 登录，只能查看自己的空间。
+一个 Space 是一个用户的数据边界。部署管理员创建 Space，使用 `POST /admin/v0/spaces/<space_id>/owner-credential` 签发用户管理凭据，也可以在 Dashboard 的「服务管理 → 管理当前空间登录」中操作。页面先解释作用，明确确认后才生成或重置。用户通过同一个 `/dashboard` 登录，只能查看自己的空间。
 
 用户管理凭据和 Agent token 分开使用。用户可在本空间内接入助手、配置策略、查看内容和撤销本空间的 Agent token；不能创建别人的空间、签发其他用户的登录凭据、列出其他空间或执行全局维护。Agent 继续使用按 Space/Actor/Consumer/操作/资源授权的 token。
 
-重新签发用户凭据需要 `expected_version`，响应只展示一次原始凭据。`GET .../owner-credential` 只返回版本；`DELETE .../owner-credential` 撤销当前凭据。轮换和撤销后，旧 bearer 与旧用户会话失效。部署管理员仍拥有全局控制和服务端解密权限；本方案不承诺防御被攻陷的服务运行时。
+重新签发用户凭据需要 `expected_version`，响应只展示一次原始凭据。`GET .../owner-credential` 只返回空间 ID、版本与启用状态，不返回原始凭据或摘要；`DELETE .../owner-credential` 撤销当前凭据。轮换和撤销后，旧 bearer 与旧用户会话失效。部署管理员仍拥有全局控制和服务端解密权限；本方案不承诺防御被攻陷的服务运行时。
 
 ## 保存哪些密文
 
