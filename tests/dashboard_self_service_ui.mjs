@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const wait = async predicate => {for (let i=0;i<150;i++) {if(predicate()) return; await new Promise(r=>setTimeout(r,10));} throw new Error('Expected user interface was not reached');};
-function dashboard(extra = () => null) {
+async function dashboard(extra = () => null) {
   const dom=new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'}),w=dom.window;
   Object.defineProperty(w,'crypto',{value:webcrypto});
   w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Blob=Blob;
@@ -13,19 +13,24 @@ function dashboard(extra = () => null) {
   w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
   const actors=[{actor_id:'agent-one',display_name:'Research assistant',kind:'agent',disabled:false}];
   w.fetch=async(path,options={})=>{
+    if (typeof path === 'string' && path.includes('/dashboard/locales/')) {
+      const file = path.split('/').pop();
+      return {ok:true,status:200,json:async()=>JSON.parse(readFileSync(new URL('../dashboard/locales/'+file,import.meta.url),'utf8'))};
+    }
     const body=options.body?JSON.parse(options.body):{};
     let data=extra(path,body,options);
     if(data instanceof Response)return data;
     if(data===null) data=path==='/admin/session'?{csrf_token:'test',operator:false,limits:{max_page_size:20,max_blob_bytes:262144,max_collection_items:32}}:path==='/admin/v0/registry'?{items:body.kind==='spaces'?[{space_id:'space-one',display_name:'My space',default_actor_id:'owner'}]:body.kind==='actors'?actors:[],has_more:false}:path.endsWith('/primary-assistant')?{revision:0,primary_assistant:null}:path.endsWith('/connection-status')?{actors:[{actor_id:'agent-one',report_count:0,last_report_at:null}]}:{items:[],has_more:false};
     return {ok:true,status:200,json:async()=>({ok:true,data})};
   };
-  for(const file of ['onboarding-copy.js','memory.js','app.js'])w.eval(readFileSync(new URL('../dashboard/'+file,import.meta.url),'utf8'));
+  for(const file of ['i18n.js','memory.js','app.js'])w.eval(readFileSync(new URL('../dashboard/'+file,import.meta.url),'utf8'));
+  await w.WaypostI18n.set('zh');
   return {dom,w,d:w.document};
 }
 
 test('assistant setup shows actual delivery history instead of treating an issued credential as a working connection',async()=>{
   let delivered=false;
-  const {w,d}=dashboard(path=>path.endsWith('/connection-status')?{actors:[{actor_id:'agent-one',report_count:delivered?1:0,last_report_at:delivered?'2026-10-14T03:00:00Z':null}]}:null);
+  const {w,d}=await dashboard(path=>path.endsWith('/connection-status')?{actors:[{actor_id:'agent-one',report_count:delivered?1:0,last_report_at:delivered?'2026-10-14T03:00:00Z':null}]}:null);
   try {
     await wait(()=>!d.querySelector('#app').hidden&&d.querySelector('#content').children.length);
     d.querySelector('[data-tab=agents]').click();await wait(()=>d.querySelector('[data-connection-status]'));
@@ -38,7 +43,7 @@ test('assistant setup shows actual delivery history instead of treating an issue
 test('owner edits a current text item and exports the new fixed version with its original bytes',async()=>{
   let version=1,text='I prefer tea.',preparedText='';const edits=[],downloads=[];
   const collection={collection_id:'col-one',display_name:'Travel preferences',source_actor_id:'agent-one',scope:'private',current_revision:1};
-  const {w,d}=dashboard((path,body)=>{
+  const {w,d}=await dashboard((path,body)=>{
     if(path.endsWith('/inspect'))return body.kind==='collections'?{items:[collection],has_more:false}:body.kind==='memory_revision'?{revisions:[{revision:version},{revision:1}],limit:100}:{items:[],has_more:false};
     if(path.endsWith('/memory/col-one/read'))return {collection_id:'col-one',source_actor_id:'agent-one',scope:'private',revision:version,items:[{item_id:'item-one',blob_id:'blob-one',path:'preferences.md',metadata:{source:'you'},size_bytes:Buffer.byteLength(text),sha256:createHash('sha256').update(text).digest('hex'),content_type:'text/plain'}],has_more:false};
     if(path.endsWith('/memory/col-one/edit/prepare')){preparedText=body.text;return {blob_id:'blob-edit'};}
@@ -66,7 +71,7 @@ test('returning to the inbox announces a new report without clearing the current
   let arrived=false;const requests=[];
   const old={message_id:'old-report',subject:'Earlier report',producer_id:'agent-one',committed_at:'2026-10-14T02:00:00Z'};
   const recent={message_id:'new-report',subject:'New result ready',producer_id:'agent-one',committed_at:'2026-10-14T03:00:00Z'};
-  const {w,d}=dashboard((path,body)=>{
+  const {w,d}=await dashboard((path,body)=>{
     requests.push(path);
     return path.endsWith('/inspect')&&body.kind==='inbox'?{items:arrived?[recent,old]:[old],has_more:false}:null;
   });
@@ -85,7 +90,7 @@ test('returning to the inbox announces a new report without clearing the current
 
 test('an owner can compare the latest version, leave and recover the draft, then explicitly save against that version',async()=>{
  const original='Original preference.',remote='Another assistant corrected this.';let revision=1,prepared='',saved=null;
- const {w,d}=dashboard((path,body)=>{
+ const {w,d}=await dashboard((path,body)=>{
   if(path.endsWith('/inspect'))return body.kind==='collections'?{items:[{collection_id:'col-one',display_name:'Preferences',source_actor_id:'agent-one'}],has_more:false}:body.kind==='memory_revision'?{revisions:[{revision},{revision:1}]}:{items:[],has_more:false};
   if(path.endsWith('/memory/col-one/read')){const selected=body.revision??revision,content=selected===1?original:remote;return {collection_id:'col-one',revision:selected,items:[{item_id:'item-one',blob_id:'blob-'+selected,path:'preference.md',size_bytes:Buffer.byteLength(content),sha256:createHash('sha256').update(content).digest('hex'),content_type:'text/plain'}],has_more:false};}
   if(path.endsWith('/blobs/blob-1/content'))return new Response(original);
@@ -111,7 +116,7 @@ test('an owner can compare the latest version, leave and recover the draft, then
 
 test('a corrupted original file prevents export instead of downloading an incomplete archive',async()=>{
  const content='Original preference.';let downloaded=false;
- const {w,d}=dashboard((path,body)=>{
+ const {w,d}=await dashboard((path,body)=>{
   if(path.endsWith('/inspect'))return body.kind==='collections'?{items:[{collection_id:'col-one',display_name:'Preferences',source_actor_id:'agent-one'}],has_more:false}:body.kind==='memory_revision'?{revisions:[{revision:1}]}:{items:[],has_more:false};
   if(path.endsWith('/memory/col-one/read'))return {collection_id:'col-one',revision:1,items:[{item_id:'item-one',blob_id:'blob-one',path:'preference.md',size_bytes:Buffer.byteLength(content),sha256:'0'.repeat(64),content_type:'text/plain'}],has_more:false};
   if(path.endsWith('/blobs/blob-one/content'))return new Response(content);

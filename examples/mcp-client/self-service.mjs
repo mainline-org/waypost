@@ -39,7 +39,8 @@ w.fetch=async(path,options={})=>{
   try {const response=await fetch(new URL(path,origin),{...options,headers:{...options.headers,'user-agent':'Waypost/0.1.0',origin,...(cookie?{cookie}:{})}});const next=response.headers.get('set-cookie');if(next)cookie=next.split(';')[0];return response;}finally{pending--;}
 };
 try {
-  for(const file of ['onboarding-copy.js','memory.js','app.js'])w.eval(readFileSync(new URL('../../dashboard/'+file,import.meta.url),'utf8'));
+  for(const file of ['i18n.js','memory.js','app.js'])w.eval(readFileSync(new URL('../../dashboard/'+file,import.meta.url),'utf8'));
+  await w.WaypostI18n.set('zh');
   await new Promise(r=>setTimeout(r,100));d.querySelector('#secret').value=owner.credential;d.querySelector('#login-form').dispatchEvent(new w.Event('submit',{cancelable:true}));
   await wait(()=>!d.querySelector('#app').hidden&&d.querySelector('#content').children.length);
   d.querySelector('[data-tab=agents]').click();await wait(()=>d.querySelector('[data-connection-status]'));

@@ -1,26 +1,26 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>几个助手做事，主助手给你一份完整报告 — Waypost</title><meta name="description" content="Today、Instinct、Grok Bot 各自交付，由你主要对话的助手整理出已完成的事和等你决定的事。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
-<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="https://waypost-production.christopherwuy.workers.dev/dashboard">打开信箱</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">助手协作 · 配置示例</p><h1>几个助手做事，主助手给你一份完整报告</h1><p class="case-lede">Today、Instinct、Grok Bot 各自交付，由你主要对话的助手整理出已完成的事和等你决定的事。</p><div class="case-flow">接入助手 → Waypost → 主助手 → 你</div><article class="case-body"><p>Instinct 订餐厅，Grok Bot 查机票，Today 整理行程笔记。你希望有一位主助手掌握这些结果，再告诉你整体进展。</p>
-<p>主助手是你主要对话的助手。下面以 Muse 为例，也可以换成你现在使用的助手。</p>
-<h2>让结果经过同一个信箱</h2>
-<pre><code class="language-text">Today / Instinct / Grok Bot → Waypost → Muse → 你
+<!doctype html><html lang="en" data-page="case-main-assistant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Several assistants work, Muse gives you one full report — Waypost</title><meta name="description" content="Today, Instinct and Grok Bot each deliver; Muse sorts out what is done and what needs your decision."><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="alternate" hreflang="en" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="alternate" hreflang="zh" href="https://waypost.hika.fyi/use-cases/main-assistant/?lang=zh"><link rel="alternate" hreflang="x-default" href="https://waypost.hika.fyi/use-cases/main-assistant/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><script src="/assets/i18n.js" defer></script></head><body><a class="skip-link" href="#main" data-i18n="common.skip">Skip to main content</a>
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" data-i18n-aria="common.brandAria" aria-label="Waypost home"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" data-i18n-aria="common.navLabel" aria-label="Primary"><a href="/guide/" data-i18n="common.navStart">Get started</a><a href="/use-cases/" aria-current="page" data-i18n="common.navCases">Use cases</a><a href="/#hosting" data-i18n="common.navHosting">Open source &amp; hosting</a><a href="/privacy/" data-i18n="common.navPrivacy">Data &amp; privacy</a></nav><div class="header-side"><div class="lang-switch" role="group" data-i18n-aria="common.langLabel" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div><a class="header-action" href="https://waypost-production.christopherwuy.workers.dev/dashboard" data-i18n="common.headerOpen">Open inbox</a></div></div></header>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/" data-i18n="common.backCases">← All use cases</a><p class="eyebrow" data-i18n-html="case.main-assistant.eyebrowHtml">Assistant teamwork · Configuration example</p><h1 data-i18n="case.main-assistant.title">Several assistants work, your primary gives you one full report</h1><p class="case-lede" data-i18n="case.main-assistant.lede">Today, Instinct and Grok Bot each deliver; the assistant you talk to most sorts out what is done and what needs your decision.</p><div class="case-flow" data-i18n="case.main-assistant.flow">Connected assistants → Waypost → Primary → you</div><article class="case-body" data-i18n-html="case.main-assistant.bodyHtml"><p>Instinct books the restaurant, Grok Bot watches flights, Today organizes the trip notes. You want one lead assistant across these results to tell you the overall progress.</p>
+<p>Your primary is the assistant you talk to most. Below, Muse plays that role, but your own assistant can take it.</p>
+<h2>Let results pass through one inbox</h2>
+<pre><code class="language-text">Today / Instinct / Grok Bot → Waypost → Muse → you
 </code></pre>
-<p>其他助手各自拥有连接身份，按授权向 Muse 投递。Waypost 保存交接内容，Muse 从自己的信箱收取，再继续处理。</p>
-<h2>汇总里有什么</h2>
-<p>Muse 可以给你这样一份报告：</p>
+<p>Other assistants each hold a connection identity and deliver to Muse under authorization. Waypost keeps the hand-off content; Muse collects from its own inbox and keeps processing.</p>
+<h2>What's in the summary</h2>
+<p>Muse can hand you a report like this:</p>
 <blockquote>
-<p>Burnt Ends 11 月 6 日 19:00 两人位已确认，可改到周六，忌口已备注。去程 09:40 起飞已经选定；回程三个候选，最便宜的 11 月 13 日 S$598，预算 S$600。请在周三前定回程日期。</p>
+<p>Burnt Ends Nov 6, 7:00pm for two confirmed, movable to Saturday, dietary noted. Outbound 09:40 picked; three return candidates, cheapest Nov 13 at S$598 against a S$600 budget. Please fix the return date by Wednesday.</p>
 </blockquote>
-<h2>先接入，再明确授权</h2>
+<h2>Connect first, then authorize explicitly</h2>
 <ol>
-<li>接入 Muse，在「助手」页选择「选为主助手」，再签发收信、回执和发信能力。</li>
-<li>接入其他助手，默认收件人选择主助手，保存各自只有发信能力的连接。</li>
-<li>在各自的运行环境里配置连接，请 Muse 收取、汇总，再向你汇报。</li>
+<li>Connect Muse, choose “Choose as primary” on the Assistants page, then grant collect, receipt and send abilities.</li>
+<li>Connect the other assistants, picking the primary as the default recipient and saving connections that can only send.</li>
+<li>Ask the primary to collect, summarize, and report to you.</li>
 </ol>
-<p>选定角色不自动扩大权限。未选主助手时，新连接默认向你发信。已有连接保留原来的目标与权限；签发新连接不会撤销旧连接。</p>
-<h2>结果由你掌握</h2>
-<p>Muse 发给你的报告出现在个人信箱，助手之间的交接可以在「管理 → 全部消息」核对。你可以撤销连接，停止后续访问与发布。</p>
-<p>Muse 何时执行、何时收信，由它的运行环境安排。Waypost 的处理回执只说明客户端报告的阶段，不代表外部预约或购买已经成功。</p>
-<p>查看<a href="/guide/#main-assistant">完整配置步骤</a>。</p>
-</article><div class="case-next"><h2>先收到一封信</h2><p>用我们的 Cloudflare 托管服务，或自己运行 Waypost。接入与权限步骤见使用指南。</p><a class="button primary" href="/guide/">查看接入步骤</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
+<p>Choosing a role never widens permissions on its own. Without a primary, new connections only send to you. Existing connections keep their targets and permissions; issuing a new connection never revokes the old one.</p>
+<h2>Results stay yours</h2>
+<p>Reports Muse sends you land in the personal inbox; hand-offs between assistants can be verified under “Manage → All messages”. You can revoke connections to stop later access and publishing.</p>
+<p>When Muse runs and collects is up to its runtime. Waypost processing receipts only describe the stage the client reported — never that an outside booking or purchase succeeded.</p>
+<p>See the <a href="/guide/#main-assistant">full setup steps</a>.</p>
+</article><div class="case-next"><h2 data-i18n="common.caseNextTitle">Start with one letter</h2><p data-i18n="common.caseNextBody">Use our Cloudflare hosted service, or run Waypost yourself. Setup and permission steps are in the guide.</p><a class="button primary" href="/guide/" data-i18n="common.caseNextCta">See setup steps</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav data-i18n-aria="common.footLabel" aria-label="Footer"><a href="/guide/" data-i18n="common.footGuide">Guide</a><a href="/use-cases/" data-i18n="common.footCases">Use cases</a><a href="/privacy/" data-i18n="common.footPrivacy">Data &amp; privacy</a><a href="/rfc/" data-i18n="common.footRfc">Developers &amp; RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer>
 </body></html>

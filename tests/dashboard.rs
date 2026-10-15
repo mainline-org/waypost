@@ -66,3 +66,54 @@ async fn admin_sessions_expire_on_logout_and_inspection_does_not_acknowledge_mes
     assert!(page.headers["content-type"].contains("text/html"));
     assert!(page.headers.contains_key("content-security-policy"));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn dashboard_serves_i18n_assets_with_matching_locales() {
+    let f = Fixture::new().await;
+    for (path, content_type) in [
+        ("/dashboard/app.js", "text/javascript"),
+        ("/dashboard/i18n.js", "text/javascript"),
+        ("/dashboard/style.css", "text/css"),
+        ("/dashboard/locales/en.json", "application/json"),
+        ("/dashboard/locales/zh.json", "application/json"),
+    ] {
+        let response = f
+            .app
+            .handle(Request::json("GET", path, "", json!({})))
+            .await;
+        assert_eq!(response.status, 200, "{path}");
+        assert!(
+            response.headers["content-type"].contains(content_type),
+            "{path}"
+        );
+        assert!(response.headers.contains_key("content-security-policy"));
+    }
+    let en: Value = serde_json::from_slice(
+        &f.app
+            .handle(Request::json(
+                "GET",
+                "/dashboard/locales/en.json",
+                "",
+                json!({}),
+            ))
+            .await
+            .body,
+    )
+    .unwrap();
+    let zh: Value = serde_json::from_slice(
+        &f.app
+            .handle(Request::json(
+                "GET",
+                "/dashboard/locales/zh.json",
+                "",
+                json!({}),
+            ))
+            .await
+            .body,
+    )
+    .unwrap();
+    let en_keys: Vec<&String> = en.as_object().unwrap().keys().collect();
+    let zh_keys: Vec<&String> = zh.as_object().unwrap().keys().collect();
+    assert!(!en_keys.is_empty());
+    assert_eq!(en_keys, zh_keys);
+}

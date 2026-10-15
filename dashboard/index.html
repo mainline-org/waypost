@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en" data-page="dashboard">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f5f5f7">
-<title>你的助手信箱 · Waypost</title>
+<title>Your assistant inbox · Waypost</title>
 <!-- No favicon link: the Worker serves assets under `img-src 'self'` only, so a
      data: URI is blocked. The brand mark is inlined below instead. -->
 <link rel="stylesheet" href="/dashboard/style.css">
-<script defer src="/dashboard/onboarding-copy.js"></script>
+<script defer src="/dashboard/i18n.js"></script>
 <script defer src="/dashboard/memory.js"></script>
 <script defer src="/dashboard/app.js"></script>
 </head>
@@ -21,17 +21,18 @@
       <svg class="brand-mark" viewBox="0 0 48 48" width="34" height="34" aria-hidden="true"><rect width="48" height="48" rx="13" fill="#bb4d30"/><path d="m9 14 7 21 8-15 8 15 7-21" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="12" r="3" fill="#fff"/></svg>
       <span>waypost<span class="brand-dot">.</span></span>
     </a>
-    <h1>你的助手信箱。</h1>
-    <p class="lede">助手的进展和结果，都送到你这里。</p>
+    <div class="login-lang"><div class="lang-switch" role="group" data-i18n-aria="nav.lang" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div></div>
+    <h1 data-i18n="login.title">Your assistant inbox.</h1>
+    <p class="lede" data-i18n="login.lede">Assistant progress and results, all delivered to you.</p>
     <form id="login-form">
-      <label>登录密钥
+      <label><span data-i18n="login.secret">Sign-in key</span>
         <input id="secret" type="password" autocomplete="current-password" required>
       </label>
-      <button>打开信箱</button>
+      <button data-i18n="login.submit">Open inbox</button>
     </form>
-    <button id="request-access" type="button" class="secondary">申请邀请</button>
+    <button id="request-access" type="button" class="secondary" data-i18n="login.requestAccess">Request an invitation</button>
     <p id="login-error" class="notice notice-inline" role="status"></p>
-    <p class="fine">使用领取邀请时保存的登录密钥，进入自己的信箱。助手的连接信息在登录后单独配置。自己运行时，用数据目录里的服务管理密钥进入。</p>
+    <p class="fine" data-i18n="login.fine">Open your inbox with the sign-in key you saved when claiming your invitation. Assistant connection details are configured separately after login. Self-hosted, enter with the service-management key from the data directory.</p>
   </div>
 </div>
 
@@ -44,47 +45,48 @@
     </a>
 
     <div class="sidebar-scroll">
-    <label class="space">当前信箱
-      <select id="space" aria-label="选择工作空间"></select>
+    <label class="space"><span data-i18n="nav.space">Current inbox</span>
+      <select id="space" data-i18n-aria="nav.spaceAria" aria-label="Pick a workspace"></select>
     </label>
 
-    <nav aria-label="主要功能">
-      <button data-tab="inbox">信箱</button>
-      <button data-tab="agents">助手</button>
-      <button data-tab="collections">资料</button>
+    <nav data-i18n-aria="nav.main" aria-label="Primary features">
+      <button data-tab="inbox" data-i18n="nav.inbox">Inbox</button>
+      <button data-tab="agents" data-i18n="nav.agents">Assistants</button>
+      <button data-tab="collections" data-i18n="nav.collections">Library</button>
     </nav>
 
     <details id="management">
-      <summary>记录与隐私</summary>
-      <nav aria-label="管理功能">
-        <button data-tab="messages">全部消息</button>
-        <button data-tab="feed">活动记录</button>
-        <button data-tab="privacy">隐私规则</button>
-        <button data-tab="tokens">连接凭据</button>
-        <button data-tab="submissions">提交状态</button>
-        <button data-tab="receipts">处理回执</button>
+      <summary data-i18n="nav.manage">Records &amp; privacy</summary>
+      <nav data-i18n-aria="nav.manageNav" aria-label="Management features">
+        <button data-tab="messages" data-i18n="nav.messages">All messages</button>
+        <button data-tab="feed" data-i18n="nav.feed">Activity</button>
+        <button data-tab="privacy" data-i18n="nav.privacy">Privacy rules</button>
+        <button data-tab="tokens" data-i18n="nav.tokens">Connections</button>
+        <button data-tab="submissions" data-i18n="nav.submissions">Submissions</button>
+        <button data-tab="receipts" data-i18n="nav.receipts">Receipts</button>
       </nav>
     </details>
 
     <details id="service-management" hidden>
-      <summary>服务管理</summary>
-      <p class="fine">给其他人提供独立的信箱。这里的操作只有服务运行者可用。</p>
+      <summary data-i18n="nav.serviceMgmt">Service management</summary>
+      <p class="fine" data-i18n="nav.serviceNote">Give other people their own separate inbox. Only the service operator can use these actions.</p>
       <div class="service-actions">
-        <button id="invite-user" type="button" class="secondary" hidden>邀请新用户</button>
-        <button id="new-space" type="button" class="secondary" hidden>创建用户空间</button>
-        <button id="owner-credential" type="button" class="secondary" hidden>管理当前空间登录</button>
+        <button id="invite-user" type="button" class="secondary" data-i18n="nav.inviteNew" hidden>Invite a new user</button>
+        <button id="new-space" type="button" class="secondary" data-i18n="nav.createSpace" hidden>Create a user space</button>
+        <button id="owner-credential" type="button" class="secondary" data-i18n="nav.manageLogin" hidden>Manage this space's sign-in</button>
       </div>
-      <nav aria-label="服务管理">
-        <button id="access-requests-tab" data-tab="access" hidden>使用申请</button>
+      <nav data-i18n-aria="nav.serviceNav" aria-label="Service management">
+        <button id="access-requests-tab" data-tab="access" data-i18n="nav.accessRequests" hidden>Access requests</button>
       </nav>
     </details>
     </div>
 
     <div class="aside-bottom">
-      <p class="fine">自己的空间，自己的助手。</p>
-      <a href="https://waypost.hika.fyi/guide/#trial-support" target="_blank" rel="noopener" class="fine">使用帮助与试用限制 ↗</a>
-      <span id="operator-label" class="fine" hidden>当前以服务运行者身份登录</span>
-      <button id="logout" class="secondary">退出登录</button>
+      <p class="fine" data-i18n="nav.fine">Your own space, your own assistants.</p>
+      <a href="https://waypost.hika.fyi/guide/#trial-support" target="_blank" rel="noopener" class="fine" data-i18n="nav.helpTrial">Help &amp; trial limits ↗</a>
+      <div class="lang-switch" role="group" data-i18n-aria="nav.lang" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div>
+      <span id="operator-label" class="fine" data-i18n="nav.operatorAs" hidden>Signed in as the service operator</span>
+      <button id="logout" class="secondary" data-i18n="nav.logout">Log out</button>
     </div>
   </aside>
 
@@ -92,27 +94,27 @@
     <header>
       <div>
         <span class="eyebrow">WAYPOST</span>
-        <h1 id="title">信箱</h1>
-        <p id="subtitle">助手发给你的报告和消息。</p>
+        <h1 id="title">Inbox</h1>
+        <p id="subtitle">Reports and messages assistants send you.</p>
       </div>
       <div class="actions">
-        <button id="refresh" class="secondary">刷新</button>
-        <button id="add-agent">＋ 接入助手</button>
+        <button id="refresh" class="secondary" data-i18n="head.refresh">Refresh</button>
+        <button id="add-agent" data-i18n="head.add">＋ Connect assistant</button>
       </div>
     </header>
 
     <div id="notice" class="notice" role="status" hidden></div>
     <p id="sync-status" class="fine" role="status" hidden></p>
-    <button id="new-messages" type="button" hidden>有新报告，点击查看</button>
+    <button id="new-messages" type="button" data-i18n="head.newMessages" hidden>New reports — click to view</button>
     <section id="content" aria-live="polite"></section>
-    <button id="more" class="secondary" hidden>加载更多</button>
+    <button id="more" class="secondary" data-i18n="head.more" hidden>Load more</button>
   </main>
 </div>
 
 <dialog id="detail" aria-labelledby="detail-title">
   <div class="dialog-header">
-    <h2 id="detail-title">详情</h2>
-    <button id="close-detail" class="secondary">关闭</button>
+    <h2 id="detail-title" data-i18n="head.detail">Details</h2>
+    <button id="close-detail" class="secondary" data-i18n="head.close">Close</button>
   </div>
   <p id="detail-error" class="notice notice-inline" role="status" hidden></p>
   <div id="detail-body"></div>

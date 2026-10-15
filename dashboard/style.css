@@ -140,6 +140,37 @@ label { display: grid; gap: 7px; margin: 14px 0; color: var(--muted); }
 }
 .login-card { width: 100%; max-width: 460px; padding: 40px; }
 .login-card h1 { margin: 44px 0 14px; font-size: 40px; }
+.login-lang { display: flex; justify-content: flex-end; margin-top: 26px; }
+
+/* Language switch: compact segmented control shared by login and sidebar. */
+.lang-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 980px;
+  background: rgba(120, 120, 128, 0.12);
+}
+.lang-switch button {
+  border: 0;
+  background: transparent;
+  border-radius: 980px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lang-switch button:hover { background: transparent; color: var(--text); }
+.lang-switch button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.login-card .lang-switch button,
+.aside-bottom .lang-switch button {
+  width: auto;
+  margin: 0;
+}
 .lede { font-size: 18px; line-height: 1.7; }
 .login-card form { margin-top: 32px; }
 .login-card button { width: 100%; margin: 10px 0; }
@@ -204,6 +235,7 @@ summary { cursor: pointer; color: var(--muted); }
 .service-actions button { padding: 9px 12px; white-space: normal; }
 
 .aside-bottom { display: grid; flex-shrink: 0; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.aside-bottom .lang-switch { justify-self: start; }
 .aside-bottom p { margin: 0; }
 .role-guide { display: grid; gap: 10px; padding: 22px 24px; background: var(--tint); border: 1px solid var(--tint-line); border-radius: 18px; }
 .role-guide p { margin: 0; }
