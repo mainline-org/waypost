@@ -9,7 +9,7 @@
 <a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/">开始使用</a><a href="/use-cases/">使用场景</a><a href="/privacy/" aria-current="page">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header>
 <main id="main" class="container guide-layout">
-<aside class="guide-toc"><p>DATA &amp; PRIVACY</p><nav aria-label="隐私说明目录"><a href="#spaces">用户的空间</a><a href="#encryption">服务端加密</a><a href="#permissions">助手的权限</a><a href="#filtering">发布前的隐私检查</a><a href="#history">历史、删除与备份</a><a href="#this-site">这个介绍网站</a></nav></aside>
+<aside class="guide-toc"><p>DATA &amp; PRIVACY</p><nav aria-label="隐私说明目录"><a href="#spaces">用户的空间</a><a href="#encryption">服务端加密</a><a href="#permissions">助手的权限</a><a href="#filtering">发布前的隐私检查</a><a href="#history">历史、删除与备份</a><a href="#this-site">这个介绍网站</a><a href="#support">私密问题怎么求助</a></nav></aside>
 <article class="guide-article"><p class="eyebrow section-label">KNOW WHAT YOU SHARE</p><h1>清楚的边界，<br>是共享的起点。</h1><p class="guide-lede">谁能读取内容，哪些数据受保护，<br>哪些部分仍然要你和运行服务的人来管。</p><p class="notice-box">本页介绍新版代码提供的能力。已有实例要完成配置与数据迁移，才能获得对应保护；托管服务的启用情况由我们说明，自己运行时请检查配置和迁移状态。</p>
 
 <section id="spaces"><h2>每位用户有自己的空间</h2><p>用户登录凭据只管理自己的空间。空间里的助手、消息、资料、记忆与游标都绑定到所属空间；替换 URL 或猜测资源 ID，都拿不到另一个用户的数据。</p><p>创建空间、发登录凭据、维护服务，由运行这套服务的人负责。自己运行时是你；用我们的 Cloudflare 托管服务时是我们。运行者保留全局管理权限，包括管理所有空间和维护密钥。</p><p>用户登录凭据和助手连接凭据分开使用。更换或撤销用户登录凭据后，旧凭据和对应登录会话立即失效。</p></section>
@@ -20,9 +20,11 @@
 
 <section id="filtering"><h2>隐私检查能挡住它认得出的内容</h2><p>可以为指定助手的发信或收信设置规则，在发布前脱敏或阻止邮箱、手机号、常见服务凭据、敏感字段和自定义文字。</p><p>规则只覆盖已配置的检测范围，认不出所有自然语言里的隐私。无法检查的图片、PDF 和二进制附件默认阻止通过受保护的通道分享；允许之前，请先确认内容。</p><p>本地隐私规则不把原文发送给外部模型。审计记录保留规则、字段和命中数量，不保存原始敏感匹配值。</p></section>
 
-<section id="history"><h2>保留历史，也需要管理历史</h2><p>更新策略不改写已发布的内容。记忆删除是逻辑删除，历史文件和其他客户端的副本不会因此自动抹掉。</p><p>运行服务的人可以先预览，再清理过期的暂存上传和未发布对象。已封存资料与历史记忆保留；清理有引用检查和租约保护，不会删掉正在使用的内容。</p><p>加密密钥要独立备份，并与资料备份分开管理。旧部署升级后先迁移历史内容，再按保留策略处理旧明文对象和备份。密钥一旦遗失，仍被历史密文使用的内容就无法恢复。</p></section>
+<section id="history"><h2>保留历史，也需要管理历史</h2><p>更新策略不改写已发布的内容。记忆删除是逻辑删除，历史文件和其他客户端的副本不会因此自动抹掉。</p><p>运行服务的人可以先预览，再清理过期的暂存上传和未发布对象。已封存资料与历史记忆保留；清理有引用检查和租约保护，不会删掉正在使用的内容。</p><p>加密密钥要独立备份，并与资料备份分开管理。旧部署升级后先迁移历史内容，再按保留策略处理旧明文对象和备份。密钥一旦遗失，仍被历史密文使用的内容就无法恢复。</p><p>原生服务已有停服备份与异目录恢复测试，覆盖消息、附件和历史资料。托管服务的完整 D1/R2 生产恢复演练尚未完成。试用时请保留重要资料的本地副本，按需导出；<a href="/rfc/hosting/">自行运行的备份步骤</a>公开在部署说明中。</p></section>
 
-<section id="this-site"><h2>这个网站只做产品介绍</h2><p>主页用 Today、Instinct、Grok Bot 的结果交给 Muse 汇总作为示例，不发送消息，也不读取你服务里的资料。本站没有登录表单、分析追踪脚本和第三方字体请求。</p><p>「复制」按钮只把示例提示语写到剪贴板。实际登录、助手连接和资料存储，都发生在你选择的 Waypost 服务中；网站托管平台仍会处理正常的网页访问请求。</p></section>
+<section id="this-site"><h2>这个网站只做产品介绍</h2><p>主页用 Today、Instinct、Grok Bot 的结果交给你常用的主助手汇总作为示例，不发送消息，也不读取你服务里的资料。来信的示例明确标为计划接入。Dashboard 配图使用合成演示数据。本站没有登录表单、分析追踪脚本和第三方字体请求。</p><p>「复制」按钮只把示例提示语写到剪贴板。实际登录、助手连接和资料存储，都发生在你选择的 Waypost 服务中；网站托管平台仍会处理正常的网页访问请求。</p></section>
+
+<section id="support"><h2>私密问题怎么求助</h2><p>普通故障和建议可在 <a href="https://github.com/mainline-org/waypost/issues/new">GitHub 提交问题</a>，只提供操作步骤、客户端版本和错误代码。不要公开登录凭据、助手连接配置、完整邀请链接、私人消息或原始资料。</p><p>托管用户若遗失凭据、需要重发邀请，或需要讨论私人内容，请沿最初收到邀请的私密渠道联系运行者。当前按邀请试用，容量和支持边界见<a href="/guide/#trial-support">试用范围与求助</a>。</p></section>
 </article>
 </main>
 <footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer>

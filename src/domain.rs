@@ -250,7 +250,14 @@ pub struct ResourceGrants {
     pub blob_reference_ids: Vec<String>,
 }
 #[derive(Debug, Clone)]
+pub(crate) enum OwnerAuthority {
+    Operator,
+    Credential(Vec<u8>),
+    Session(Vec<u8>),
+}
+#[derive(Debug, Clone)]
 pub struct Principal {
+    pub(crate) owner_authority: Option<OwnerAuthority>,
     pub space_id: String,
     pub actor_id: String,
     pub consumer_id: String,

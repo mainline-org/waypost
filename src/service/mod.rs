@@ -16,6 +16,7 @@ use std::{collections::BTreeMap, rc::Rc};
 mod admin;
 mod blobs;
 mod dashboard;
+mod dashboard_memory;
 mod encryption;
 mod invitations;
 mod mailbox;
@@ -148,6 +149,15 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                     .map(str::to_owned)
             })
             .unwrap_or(trace);
+        if Self::dashboard_blob_request(&request) {
+            return match self.dashboard_blob_content(&request).await {
+                Ok(response) => response,
+                Err(error) => Response::json(
+                    error.status(),
+                    json!({"ok":false,"request_id":request_id,"error":error.value()}),
+                ),
+            };
+        }
         if matches!(
             crate::http::classify(&request.method, &request.path),
             crate::http::Route::BlobContent(_)
@@ -284,6 +294,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         let filter_fingerprint =
             fingerprint(&serde_json::to_value(&filter).map_err(|_| Error::storage())?)?;
         Ok(Principal {
+            owner_authority: None,
             space_id,
             consumer_id,
             token_id,
@@ -302,6 +313,9 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         })
     }
     pub(crate) fn authority_guard(&self, p: &Principal) -> (String, Vec<Sql>) {
+        if p.owner_authority.is_some() {
+            return self.owner_authority_guard(p);
+        }
         ("EXISTS(SELECT 1 FROM tokens t JOIN actors a ON a.space_id=t.space_id AND a.actor_id=t.actor_id JOIN consumers c ON c.space_id=t.space_id AND c.consumer_id=t.consumer_id WHERE t.token_id=? AND t.authority_version=? AND a.authority_version=? AND c.view_revision=? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>?) AND a.disabled=0 AND c.disabled=0)".into(),vec![p.token_id.clone().into(),p.credential_version.into(),p.actor_version.into(),p.view_revision.into(),self.clock.now_ms().into()])
     }
     pub(crate) async fn current(&self, p: &Principal) -> Result<()> {

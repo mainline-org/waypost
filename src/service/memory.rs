@@ -543,8 +543,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         for row in rows.iter().take(limit) {
             after = text(row, "item_id")?;
             let mut item = json!({"item_id":after,"blob_id":text(row,"blob_id")?,"path":self.open_field(&p.space_id,&format!("memory/{cid}/{revision}/{after}/path"),&text(row,"path")?)?,"metadata":crate::json::parse(self.open_field(&p.space_id,&format!("memory/{cid}/{revision}/{after}/metadata"),&text(row,"metadata")?)?.as_bytes(),self.limits.max_blob_bytes as usize)?});
-            if let Ok(n) = integer(row, "deleted_in_revision") {
-                item["deleted_in_revision"] = json!(n)
+            match row.get("deleted_in_revision") {
+                Some(Sql::Integer(n)) => item["deleted_in_revision"] = json!(n),
+                Some(Sql::Null) | None => {}
+                _ => return Err(Error::internal("decode memory tombstone revision")),
             }
             items.push(item);
         }

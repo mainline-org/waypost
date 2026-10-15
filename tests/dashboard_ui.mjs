@@ -126,6 +126,7 @@ test('permission management opens and includes later collection pages with a 20-
     const body=options.body?JSON.parse(options.body):{};requests.push({path,body});
     let data;
     if(path.endsWith('/primary-assistant')) data={revision:0,primary_assistant:null};
+    else if(path.endsWith('/connection-status')) data={actors:[]};
     else if(path==='/admin/session') data={csrf_token:'test',operator:false,limits:{max_page_size:20}};
     else if(path==='/admin/v0/registry') data={items:fixtures[body.kind],has_more:false};
     else if(path.endsWith('/inspect')) {

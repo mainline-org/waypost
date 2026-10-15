@@ -207,6 +207,14 @@ summary { cursor: pointer; color: var(--muted); }
 .aside-bottom p { margin: 0; }
 .role-guide { display: grid; gap: 10px; padding: 22px 24px; background: var(--tint); border: 1px solid var(--tint-line); border-radius: 18px; }
 .role-guide p { margin: 0; }
+.connection-status { font-size: 13px; line-height: 1.7; color: var(--text); }
+#new-messages { margin-bottom: 18px; }
+.memory-library { display: grid; gap: 14px; }
+.memory-library > p { margin: 0; }
+.memory-items { display: grid; gap: 8px; }
+.memory-items button { text-align: left; overflow-wrap: anywhere; }
+[data-memory-editor] { min-height: 260px; max-width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.6; }
+.save-confirmation { color: var(--accent); }
 
 main { flex: 1; min-width: 0; max-width: 1450px; padding: 44px 48px; }
 
