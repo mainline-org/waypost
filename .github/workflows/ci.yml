@@ -24,7 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: examples/mcp-client/package-lock.json
       - run: npm ci --prefix examples/mcp-client --ignore-scripts
-      - run: node --test tests/dashboard_ui.mjs
+      - run: node --test tests/dashboard_ui.mjs tests/dashboard_self_service_ui.mjs
       - name: Native SDK and complete demo
         env:
           WAYPOST_ADMIN_SECRET: ci-only-admin-secret-32-bytes-long
@@ -40,6 +40,7 @@ jobs:
           node examples/mcp-client/demo.mjs
           node examples/mcp-client/handoff.mjs
           node examples/mcp-client/onboarding-ui.mjs
+          node examples/mcp-client/self-service.mjs
           python3 examples/demo.py --output /tmp/waypost-demo
   wasm:
     runs-on: ubuntu-latest
@@ -103,6 +104,7 @@ jobs:
           node examples/mcp-client/demo.mjs
           node examples/mcp-client/handoff.mjs
           node examples/mcp-client/onboarding-ui.mjs
+          node examples/mcp-client/self-service.mjs
           python3 examples/demo.py --url "$WAYPOST_URL" --output /tmp/waypost-worker-demo
           python3 scripts/verify_deployment.py --url "$WAYPOST_URL" --check-rate-limit --check-api-rate-limit
       - uses: actions/upload-artifact@v4

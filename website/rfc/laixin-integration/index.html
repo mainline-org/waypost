@@ -1,0 +1,93 @@
+<!doctype html><html lang="en" data-page="rfc-doc"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>来信主助手接入提案 — Waypost RFC</title><meta name="description" content="来信主助手接入提案. Waypost protocol and implementation doc, kept in its original state, with a chapter index and downloadable source. Full text is currently Chinese-only."><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/laixin-integration/"><link rel="alternate" hreflang="en" href="https://waypost.hika.fyi/rfc/laixin-integration/"><link rel="alternate" hreflang="zh" href="https://waypost.hika.fyi/rfc/laixin-integration/?lang=zh"><link rel="alternate" hreflang="x-default" href="https://waypost.hika.fyi/rfc/laixin-integration/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><script src="/assets/i18n.js" defer></script></head><body><a class="skip-link" href="#main" data-i18n="common.skip">Skip to main content</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" data-i18n-aria="common.brandAria" aria-label="Waypost home"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" data-i18n-aria="common.navLabel" aria-label="Primary"><a href="/use-cases/" data-i18n="common.navCases">Use cases</a><a href="/rfc/" aria-current="page" data-i18n="common.navRfc">RFC</a><a href="/privacy/" data-i18n="common.navPrivacy">Data &amp; privacy</a></nav><div class="header-side"><div class="lang-switch" role="group" data-i18n-aria="common.langLabel" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div><a class="header-action" href="/guide/" data-i18n-html="common.headerStartHtml">Get started <span aria-hidden="true">↗</span></a></div></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>PROPOSAL</p><a class="back-link" href="/rfc/" data-i18n="rfc.backAll">← All RFCs &amp; implementation docs</a><nav class="rfc-toc-nav" data-i18n-aria="rfc.tocLabel" aria-label="Document sections"><a href="#两个产品各自负责什么">两个产品，各自负责什么</a><a href="#最小接入先做收件">最小接入先做收件</a><a href="#共同记忆与本机记忆">共同记忆与本机记忆</a><a href="#调度与其他共享功能">调度与其他共享功能</a><a href="#接入验收">接入验收</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / PROPOSAL</p><h1>来信如何接入 Waypost</h1><div class="rfc-source-links"><a href="/rfc/source/0005-laixin-waypost-integration.md" download data-i18n="rfc.sourceDl">Download Markdown source ↗</a><a href="/rfc/validation/" data-i18n="rfc.seeValidation">See validation ↗</a></div><p class="notice-box" data-i18n-html="rfc.noticeHtml">Body generated from repo docs, preserving original spec status and examples. Draft RFCs and validation plans may differ from the current implementation; verified scope is in the implementation record, and encryption plus user-isolation upgrades are in the <a href="/rfc/security/">security notes</a>. Full text is currently Chinese-only; the English version is in progress.</p><div class="rfc-body"><p>状态：接入提案，尚未完成来信产品集成。Waypost 的信箱、共享资料与回执接口已经实现；本文说明如何利用这些能力，不表示来信适配器已经上线。</p>
+<h2 id="两个产品各自负责什么">两个产品，各自负责什么</h2>
+<p>Waypost 是中立、Apache 2.0 开源的交换层：保存助手交付的消息与资料，检查授权，记录独立的收取和处理进度。任何符合接口与权限要求的助手都可以接入。</p>
+<p>来信是独立的私有产品。它负责人与小信的对话、事情、提醒、模型运行、心跳和操作批准。计划接入后，小信可以担任主助手，收取其他助手的交付，把结果放回用户正在处理的事情。</p>
+<p>商业化主要围绕来信的产品体验探索。Waypost 托管是否收费、来信如何收费、两者是否捆绑，均尚未确定。开源软件与运行资源的费用分开；当前网站只提供自托管说明和托管邀请入口。</p>
+<h2 id="最小接入先做收件">最小接入先做收件</h2>
+<p>完整的第一轮是：接入助手交付一份报告，小信可靠保存后收取，用户在来信中看到对应事情的结果，再明确决定下一步。</p>
+<details class="diagram-source"><summary>图示源码 · Mermaid<span aria-hidden="true">＋</span></summary><pre><code class="language-mermaid">sequenceDiagram
+    participant A as 接入助手
+    participant W as Waypost
+    participant L as 来信原生连接器
+    participant D as 来信本机存储
+    participant U as 用户
+    A-&gt;&gt;W: 使用稳定 request_id 发报告
+    L-&gt;&gt;W: 按自己的 Consumer 读取交付
+    L-&gt;&gt;D: 保存完整内容、去重键与待处理记录
+    D--&gt;&gt;L: 本地事务提交成功
+    L-&gt;&gt;W: received
+    L-&gt;&gt;U: 展示报告，关联已知事项
+    U-&gt;&gt;L: 选择继续处理
+    L-&gt;&gt;D: 记录实际处理结果
+    L-&gt;&gt;W: processed
+</code></pre>
+</details><p>来信现有的 <code>remoteStoreURL</code> 转发的是文档与集合接口，不是 Waypost 数据面。不能直接替换服务地址；需要单独的 Waypost 连接器。源码核对与具体依据见<a href="https://github.com/mainline-org/waypost/blob/main/docs/research/0004-laixin-integration-and-business.md">接入研究</a>。</p>
+<h3 id="连接与权限">连接与权限</h3>
+<ol>
+<li>空间所有者接入小信，为它保存稳定的 Actor 与 Consumer，再选为主助手。新连接仍默认只有发信能力。</li>
+<li>明确签发 <code>message.read</code>、<code>receipt.write</code> 和 <code>message.send</code>。指定其他助手可交付给这个 Actor；更换主助手不修改旧连接。</li>
+<li>如需共享资料，再单独授予 <code>memory.read</code> 和具体集合。上传或修改需要额外的 <code>blob.write</code>、<code>memory.write</code> 与相应范围。</li>
+<li>原生外壳保管连接凭据，通过宿主支持的私密配置访问服务。凭据不进入网页、消息正文、共享记忆或日志。先调用 <code>waypost_describe</code> 核对身份、权限与实际上限。</li>
+</ol>
+<p>连接轮换尽量保留原 Actor/Consumer。新 Consumer 有独立进度；权限范围改变导致游标失效时，重新读取并按记录 ID 去重。</p>
+<h3 id="可靠收取与任务关联">可靠收取与任务关联</h3>
+<p>将服务地址、空间、Consumer、记录 ID 作为本地去重范围。完整消息、引用的获准资料、待处理状态和拟推进的位置先落到本机事务，再发送 <code>received</code>。重启后先恢复尚未处理的本地记录。</p>
+<p><code>processed</code> 只表示来信记录了本轮处理结果，例如已展示、已关联事项或已生成汇总，不证明外部预约、付款或执行成功。结果应注明处理方式，业务动作另保留真实工具回执。</p>
+<p>任务引用是关联提示，不是执行授权。连接器需要把外部报告关联到本地已知事项，检查空间、生产者与映射关系；无法关联时进入待整理收件箱。外部消息不能自行创建一个获批准的任务。</p>
+<h3 id="第一阶段只展示自动处理另行验收">第一阶段只展示，自动处理另行验收</h3>
+<p>消息与资料属于外部输入。已认证的发信人也可能给出错误内容或包含诱导命令；它不能替用户批准操作。</p>
+<p>首阶段应由原生连接器完成保存、去重、展示和事项关联，不把来信直接交给具有外部工具权限的模型自动执行。后续自动汇总与执行需分别验收宿主的隔离和批准边界。来信不同内核目前并非使用相同的逐工具拦截方式，不能因接上 Waypost 就宣称执行权限已经统一受控。</p>
+<h2 id="共同记忆与本机记忆">共同记忆与本机记忆</h2>
+<p>来信现有的 Markdown 与 git 记忆可以继续作为本机私人记忆。用户选择共享的偏好、决定和任务资料，再发布到 Waypost 集合；不默认上传整段私人对话、所有本机记忆或连接凭据。</p>
+<p>对选定的共享集合，以 Waypost 的版本作为交换依据，本机保留工作副本。上传不可变文件后，以 <code>expected_revision</code> 发布新版本；遇到冲突重新读取和比较，不静默覆盖。导入文件时检查路径、大小和摘要，不能让外部文件写出指定目录。</p>
+<p>用户可以修改共享资料、核对历史版本，或用参考客户端导出固定版本的原文件。换助手时重新授予集合范围，不把“共同记忆”描述为自动接管其他产品的原生记忆。</p>
+<h2 id="调度与其他共享功能">调度与其他共享功能</h2>
+<p>何时轮询、何时运行模型、何时通知用户，继续由来信安排。先用现有读取接口在来信心跳或显式刷新时补收；Waypost 不替代应用后台运行，也不保证来信退出后任务继续执行。</p>
+<p>约人计划与回复仍按来信现有服务管理。把它们迁到 Waypost 需要另外设计参与者身份、跨用户授权与邀请；当前一个 Space 一个用户的管理边界不能绕过。</p>
+<h2 id="接入验收">接入验收</h2>
+<div class="rfc-table"><table><thead>
+<tr>
+<th>场景</th>
+<th>应看到的结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仅发信助手交付报告</td>
+<td>能发给获准主助手，不能读其信箱或资料</td>
+</tr>
+<tr>
+<td>保存前断线</td>
+<td>没有 received，下次仍可补收</td>
+</tr>
+<tr>
+<td>本地保存后 ACK 丢失</td>
+<td>重复读取不重复创建本地记录，恢复同一回执请求</td>
+</tr>
+<tr>
+<td>received 后重启</td>
+<td>待处理记录仍在，完成后才记录 processed</td>
+</tr>
+<tr>
+<td>凭据撤销或过期</td>
+<td>旧凭据被拒绝，界面如实显示需要重新配置</td>
+</tr>
+<tr>
+<td>换空间或换 Consumer</td>
+<td>本地绑定与去重范围独立，不沿用旧进度；停用旧连接需显式撤销</td>
+</tr>
+<tr>
+<td>同一资料并发修改</td>
+<td>CAS 冲突明确返回，不静默覆盖</td>
+</tr>
+<tr>
+<td>报告含伪造任务引用或执行指令</td>
+<td>只展示或进入待整理，不扩大宿主权限</td>
+</tr>
+<tr>
+<td>需要自动处理但内核没有适当隔离</td>
+<td>保持收件展示路径，不自动执行</td>
+</tr>
+</tbody>
+</table></div><p>Waypost 参考客户端已覆盖真实 HTTP/MCP 的权限与交接路径；来信适配、应用重启与模型执行边界还需在来信中完成这些验收。当前依据见<a href="https://github.com/mainline-org/waypost/blob/main/docs/user-guide.md">接入与授权指南</a>、<a href="https://github.com/mainline-org/waypost/blob/main/skills/waypost/SKILL.md">Waypost Skill</a>、<a href="https://github.com/mainline-org/waypost/blob/main/examples/mcp-client/handoff.mjs">交接示例</a>与<a href="/rfc/validation/">实现记录</a>。</p>
+</div><a class="back-link rfc-bottom-link" href="/rfc/" data-i18n="rfc.bottomBack">← Back to RFC index</a></article></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost.</span></a><p data-i18n="common.footTag">Every assistant's progress, delivered to you.</p></div><nav data-i18n-aria="common.footLabel" aria-label="Footer"><a href="/guide/" data-i18n="common.footGuide">Guide</a><a href="/use-cases/" data-i18n="common.footCases">Use cases</a><span aria-current="page">RFC</span><a href="/privacy/" data-i18n="common.footPrivacy">Data &amp; privacy</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">OPEN SOURCE · APACHE 2.0</span></div></footer></body></html>

@@ -13,9 +13,13 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "text/html; charset=utf-8",
                 include_bytes!("../../dashboard/index.html").as_slice(),
             ),
-            "/dashboard/onboarding-copy.js" => (
+            "/dashboard/i18n.js" => (
                 "text/javascript; charset=utf-8",
-                include_bytes!("../../dashboard/onboarding-copy.js").as_slice(),
+                include_bytes!("../../dashboard/i18n.js").as_slice(),
+            ),
+            "/dashboard/memory.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../../dashboard/memory.js").as_slice(),
             ),
             "/dashboard/app.js" => (
                 "text/javascript; charset=utf-8",
@@ -24,6 +28,14 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             "/dashboard/style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../../dashboard/style.css").as_slice(),
+            ),
+            "/dashboard/locales/en.json" => (
+                "application/json; charset=utf-8",
+                include_bytes!("../../dashboard/locales/en.json").as_slice(),
+            ),
+            "/dashboard/locales/zh.json" => (
+                "application/json; charset=utf-8",
+                include_bytes!("../../dashboard/locales/zh.json").as_slice(),
             ),
             _ => return None,
         };
@@ -458,7 +470,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         Ok(json!({"items":items,"has_more":more,"next_cursor":cursor}))
     }
 }
-fn session_cookie(request: &Request) -> Result<String> {
+pub(super) fn session_cookie(request: &Request) -> Result<String> {
     request
         .headers
         .get("cookie")

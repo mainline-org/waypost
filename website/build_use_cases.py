@@ -30,6 +30,7 @@ zh = json.loads((LOCALES / 'zh.json').read_text())
 page = (SITE / 'index.html').read_text()
 header = page[page.index('<a class="skip-link"'):page.index('<main id="main"')]
 header = header.replace('href="#how"', 'href="/guide/"')
+header = header.replace('href="#hosting"', 'href="/#hosting"')
 header = header.replace(
     '<a href="/use-cases/" data-i18n="common.navCases">',
     '<a href="/use-cases/" aria-current="page" data-i18n="common.navCases">',

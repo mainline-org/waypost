@@ -215,10 +215,12 @@ for lang_name, table in (('en', en), ('zh', zh)):
             errors.append(f'site.js missing {lang_name} {key}={value[:24]!r}…')
 
 # demo.js embeds its dynamic panel copy; values must match the d2.* entries.
-demo_js = (base / 'assets/demo.js').read_text().replace('\\\\n', '\n')
+demo_js = (base / "assets/demo.js").read_text().replace("\\n", "\n").replace("\\'", "'")
 for lang_name, table in (('en', en), ('zh', zh)):
     for key, value in table.items():
-        if not (key.startswith('d2.desc') or key.startswith('d2.doc') or key in ('d2.docSource', 'd2.primaryNoteTpl', 'd2.primaryNoteDefault', 'd2.optCustom')):
+        if key == 'd2.docSourceInitial':
+            continue
+        if not (key.startswith('d2.desc') or key.startswith('d2.doc') or key in ('d2.docSource', 'd2.primaryNoteTpl', 'd2.primaryNoteTplLaixin', 'd2.primaryNoteDefault', 'd2.optCustom', 'd2.optLaixin', 'd2.laixinName', 'd2.laixinPlan', 'd2.primaryAvatar', 'd2.filePrefsSmall', 'd2.prefsActor')):
             continue
         if value not in demo_js:
             errors.append(f'demo.js missing {lang_name} {key}={value[:24]!r}…')

@@ -20,6 +20,7 @@ DOCS = [
     ('docs/rfcs/0001-properties.md', 'properties', '性质与验证计划', 'RFC-0001 配套'),
     ('docs/validation.md', 'validation', '实现验证记录', 'IMPLEMENTATION'),
     ('docs/security.md', 'security', '安全与数据管理', 'IMPLEMENTATION'),
+    ('docs/design/0005-laixin-waypost-integration.md', 'laixin-integration', '来信主助手接入提案', 'PROPOSAL'),
 ]
 CORE_DOC_COUNT = len(DOCS)
 DOCS.extend([
@@ -120,6 +121,7 @@ notes = {
     'properties': ('Validation plan', 'rfc.statusProperties', 'rfc.cardPropertiesTitle', 'rfc.cardPropertiesDesc'),
     'validation': ('Implementation record', 'rfc.statusValidation', 'rfc.cardValidationTitle', 'rfc.cardValidationDesc'),
     'security': ('Implementation notes', 'rfc.statusSecurity', 'rfc.cardSecurityTitle', 'rfc.cardSecurityDesc'),
+    'laixin-integration': ('Integration plan / not integrated', 'rfc.statusLaixin', 'rfc.cardLaixinTitle', 'rfc.cardLaixinDesc'),
 }
 for _, slug, label, category in DOCS[:CORE_DOC_COUNT]:
     status_en, status_key, title_key, desc_key = notes[slug]

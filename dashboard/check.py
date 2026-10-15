@@ -105,18 +105,21 @@ text = re.sub(r'<[^>]+>', '', text)
 if cjk.search(unescape(text)):
     errors.append('index.html has unkeyed Chinese copy: %r' % cjk.search(unescape(text)).group(0))
 
-js = (base / 'app.js').read_text()
-if cjk.search(js):
-    errors.append('app.js has hardcoded Chinese: %r…' % js[cjk.search(js).start():cjk.search(js).start() + 12])
-for key in sorted(set(re.findall(r"""\bt\(\s*['"]([^'"]+)['"]""", js))):
-    if key not in en:
-        errors.append('app.js t() unknown key %s' % key)
-for key, params in re.findall(r"""\bt\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]*)\}""", js):
-    names = set(re.findall(r'(\w+)\s*:', params))
-    for lang_name, table in (('en', en), ('zh', zh)):
-        want = set(param.findall(table.get(key, '')))
-        if key in table and names != want:
-            errors.append('app.js t(%s) params %s != %s %s' % (key, sorted(names), lang_name, sorted(want)))
+for js_name in ('app.js', 'memory.js'):
+    js = (base / js_name).read_text()
+    if cjk.search(js):
+        errors.append('%s has hardcoded Chinese: %r…' % (
+            js_name, js[cjk.search(js).start():cjk.search(js).start() + 12]))
+    for key in sorted(set(re.findall(r"""\bt\(\s*['"]([^'"]+)['"]""", js))):
+        if key not in en:
+            errors.append('%s t() unknown key %s' % (js_name, key))
+    for key, params in re.findall(r"""\bt\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]*)\}""", js):
+        names = set(re.findall(r'(\w+)\s*:', params))
+        for lang_name, table in (('en', en), ('zh', zh)):
+            want = set(param.findall(table.get(key, '')))
+            if key in table and names != want:
+                errors.append('%s t(%s) params %s != %s %s' % (
+                    js_name, key, sorted(names), lang_name, sorted(want)))
 
 css = (base / 'style.css').read_text()
 if '.lang-switch' not in css:

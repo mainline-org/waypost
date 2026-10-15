@@ -11,12 +11,41 @@ const fixtures = {
 };
 const wait = async predicate => {for(let i=0;i<100;i++){if(predicate()) return; await new Promise(r=>setTimeout(r,10));} throw new Error('UI did not reach expected state');};
 
+test('a disabled primary assistant directs the owner to choose another instead of waiting', async () => {
+  const dom=new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'});
+  const {window:w}=dom; const d=w.document;
+  w.fetch=async(path,options={})=>{
+    if (typeof path === 'string' && path.includes('/dashboard/locales/')) {
+      const file = path.split('/').pop();
+      return {ok:true,status:200,json:async()=>JSON.parse(readFileSync(new URL('../dashboard/locales/'+file,import.meta.url),'utf8'))};
+    }
+    const body=options.body?JSON.parse(options.body):{};
+    const data=path==='/admin/session'?{csrf_token:'test',operator:false}:path==='/admin/v0/registry'?{items:body.kind==='actors'?fixtures.actors.map(actor=>({...actor,disabled:true})):fixtures[body.kind],has_more:false}:path.endsWith('/primary-assistant')?{revision:1,primary_assistant:{actor_id:'actor-agent',display_name:'Assistant',disabled:true}}:{items:[],has_more:false};
+    return {ok:true,status:200,json:async()=>({ok:true,data})};
+  };
+  try {
+    w.eval(readFileSync(new URL('../dashboard/i18n.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await w.WaypostI18n.set('zh');
+    await wait(()=>d.querySelector('#content .empty'));
+    assert(d.querySelector('#content').textContent.includes('已停用'));
+    assert(!d.querySelector('#content').textContent.includes('等待主助手'));
+    assert.equal(d.querySelector('#service-management').hidden,true);
+    d.querySelector('#content .empty button').click();await wait(()=>d.querySelector('.role-guide'));
+    assert(d.querySelector('.role-guide').textContent.includes('选择其他助手'));
+  }finally{w.close();}
+});
+
 test('viewing space sign-in explains the target and waits for an explicit reset', async () => {
   const dom = new JSDOM(readFileSync(new URL('../dashboard/index.html',import.meta.url),'utf8'),{url:'https://service.example/dashboard',runScripts:'outside-only'});
   const {window:w}=dom; const d=w.document; const writes=[];
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
   w.fetch=async(path,options={})=>{
+    if (typeof path === 'string' && path.includes('/dashboard/locales/')) {
+      const file = path.split('/').pop();
+      return {ok:true,status:200,json:async()=>JSON.parse(readFileSync(new URL('../dashboard/locales/'+file,import.meta.url),'utf8'))};
+    }
     const body=options.body?JSON.parse(options.body):{}; let data;
     if(path==='/admin/session') data={csrf_token:'test',operator:true};
     else if(path==='/admin/v0/registry') data={items:fixtures[body.kind],has_more:false};
@@ -26,8 +55,9 @@ test('viewing space sign-in explains the target and waits for an explicit reset'
     return {ok:true,status:200,json:async()=>({ok:true,data})};
   };
   try {
-    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/i18n.js',import.meta.url),'utf8'));
     w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await w.WaypostI18n.set('zh');
     await wait(()=>!d.querySelector('#app').hidden && d.querySelector('#content').children.length);
     d.querySelector('#owner-credential').click();await wait(()=>d.querySelector('#detail-body form'));
     assert.equal(writes.length,0);
@@ -49,8 +79,9 @@ test('a redeemed personal credential remains visible when space loading fails', 
     ?{ok:true,status:200,json:async()=>({ok:true,data:{credential:'wp_user_once',csrf_token:'test',operator:false}})}
     :{ok:false,status:503,json:async()=>({ok:false,error:{message:'Storage temporarily unavailable'}})};
   try {
-    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/i18n.js',import.meta.url),'utf8'));
     w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await w.WaypostI18n.set('zh');
     await wait(()=>w.document.querySelector('#notice').textContent.includes('Storage temporarily unavailable'));
     assert.equal(w.location.hash,'');
     assert(w.document.querySelector('#detail').open);
@@ -68,6 +99,10 @@ test('a simultaneous logout prevents an invitation response from displaying its 
   w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
   let resolveInvite, resolveLogout;
   w.fetch=async(path,options={})=>{
+    if (typeof path === 'string' && path.includes('/dashboard/locales/')) {
+      const file = path.split('/').pop();
+      return {ok:true,status:200,json:async()=>JSON.parse(readFileSync(new URL('../dashboard/locales/'+file,import.meta.url),'utf8'))};
+    }
     const body=options.body?JSON.parse(options.body):{};
     let data;
     if(path.endsWith('/invitations')) return {ok:true,status:200,json:()=>new Promise(resolve=>{resolveInvite=resolve;})};
@@ -80,8 +115,9 @@ test('a simultaneous logout prevents an invitation response from displaying its 
     return {ok:true,status:200,json:async()=>({ok:true,data})};
   };
   try {
-    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/i18n.js',import.meta.url),'utf8'));
     w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await w.WaypostI18n.set('zh');
     await wait(()=>!d.querySelector('#app').hidden && d.querySelector('#content').children.length);
     d.querySelector('#invite-user').click();
     d.querySelector('#detail-body form').dispatchEvent(new w.Event('submit',{cancelable:true}));
@@ -106,6 +142,7 @@ test('permission management opens and includes later collection pages with a 20-
     const body=options.body?JSON.parse(options.body):{};requests.push({path,body});
     let data;
     if(path.endsWith('/primary-assistant')) data={revision:0,primary_assistant:null};
+    else if(path.endsWith('/connection-status')) data={actors:[]};
     else if(path==='/admin/session') data={csrf_token:'test',operator:false,limits:{max_page_size:20}};
     else if(path==='/admin/v0/registry') data={items:fixtures[body.kind],has_more:false};
     else if(path.endsWith('/inspect')) {
@@ -116,8 +153,9 @@ test('permission management opens and includes later collection pages with a 20-
     return {ok:true,status:200,json:async()=>({ok:true,data})};
   };
   try {
-    w.eval(readFileSync(new URL('../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+    w.eval(readFileSync(new URL('../dashboard/i18n.js',import.meta.url),'utf8'));
     w.eval(readFileSync(new URL('../dashboard/app.js',import.meta.url),'utf8'));
+    await w.WaypostI18n.set('zh');
     await wait(()=>!d.querySelector('#app').hidden && d.querySelector('#content').children.length);
     d.querySelector('[data-tab=agents]').click();await wait(()=>d.querySelector('.agent'));
     d.querySelector('[data-action=manage-connections]').click();

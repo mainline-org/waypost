@@ -144,6 +144,25 @@ impl<D: Database, O: ObjectStore> App<D, O> {
             let sid = parts[3];
             check_id(sid)?;
             self.admin_space(sid).await?;
+            if request.method == "GET" && parts.len() == 5 && parts[4] == "connection-status" {
+                return self.connection_status(sid).await;
+            }
+            if request.method == "POST" && parts.len() == 7 && parts[4] == "memory" {
+                let p = self.dashboard_owner(request, sid, Some(parts[5])).await?;
+                return match parts[6] {
+                    "read" => self.dashboard_memory_read(&p, parts[5], body).await,
+                    "edit" => self.dashboard_memory_edit(&p, parts[5], body).await,
+                    _ => Err(Error::not_found()),
+                };
+            }
+            if request.method == "POST"
+                && parts.len() == 8
+                && parts[4] == "memory"
+                && parts[6..] == ["edit", "prepare"]
+            {
+                let p = self.dashboard_owner(request, sid, Some(parts[5])).await?;
+                return self.dashboard_memory_prepare(&p, parts[5], body).await;
+            }
             if parts.len() >= 5 && parts[4] == "invitations" {
                 return self.space_invitation(sid, request, &parts, body).await;
             }

@@ -33,8 +33,11 @@ pub(crate) fn classify<'a>(method: &str, path: &'a str) -> Route<'a> {
             | "/dashboard"
             | "/dashboard/"
             | "/dashboard/app.js"
+            | "/dashboard/i18n.js"
             | "/dashboard/style.css"
-            | "/dashboard/onboarding-copy.js",
+            | "/dashboard/memory.js"
+            | "/dashboard/locales/en.json"
+            | "/dashboard/locales/zh.json",
         ) => return PublicAsset,
         ("GET", "/health") => return Health,
         ("GET", "/ready") => return Ready,

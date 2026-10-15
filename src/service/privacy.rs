@@ -186,9 +186,16 @@ impl Policy {
         })
     }
 }
+fn policy_flag(row: &Row, key: &str) -> Result<bool> {
+    match integer(row, key)? {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::internal("privacy policy boolean")),
+    }
+}
 impl<D: Database, O: ObjectStore> App<D, O> {
     pub(super) async fn policy(&self, space: &str) -> Result<Policy> {
-        let rows=self.db.query(Statement::new("SELECT s.privacy_revision,p.enabled,p.mode,p.all_agents,p.allow_uninspected_attachments FROM spaces s LEFT JOIN privacy_policies p ON p.space_id=s.space_id WHERE s.space_id=?",vec![space.into()])).await?;
+        let rows=self.db.query(Statement::new("SELECT s.privacy_revision,COALESCE(p.enabled,0) AS enabled,p.mode,COALESCE(p.all_agents,0) AS all_agents,COALESCE(p.allow_uninspected_attachments,0) AS allow_uninspected_attachments FROM spaces s LEFT JOIN privacy_policies p ON p.space_id=s.space_id WHERE s.space_id=?",vec![space.into()])).await?;
         let r = rows.first().ok_or_else(Error::not_found)?;
         let actors = self
             .db
@@ -221,11 +228,11 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         }
         Ok(Policy {
             revision: integer(r, "privacy_revision")?,
-            enabled: integer(r, "enabled").unwrap_or(0) == 1,
+            enabled: policy_flag(r, "enabled")?,
             mode: optional_text(r, "mode").unwrap_or_else(|| "redact".into()),
-            all_agents: integer(r, "all_agents").unwrap_or(0) == 1,
+            all_agents: policy_flag(r, "all_agents")?,
             actors,
-            allow_binary: integer(r, "allow_uninspected_attachments").unwrap_or(0) == 1,
+            allow_binary: policy_flag(r, "allow_uninspected_attachments")?,
             rules,
         })
     }
