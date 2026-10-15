@@ -17,6 +17,10 @@ impl<D: Database, O: ObjectStore> App<D, O> {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../../dashboard/onboarding-copy.js").as_slice(),
             ),
+            "/dashboard/memory.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../../dashboard/memory.js").as_slice(),
+            ),
             "/dashboard/app.js" => (
                 "text/javascript; charset=utf-8",
                 include_bytes!("../../dashboard/app.js").as_slice(),
@@ -458,7 +462,7 @@ impl<D: Database, O: ObjectStore> App<D, O> {
         Ok(json!({"items":items,"has_more":more,"next_cursor":cursor}))
     }
 }
-fn session_cookie(request: &Request) -> Result<String> {
+pub(super) fn session_cookie(request: &Request) -> Result<String> {
     request
         .headers
         .get("cookie")

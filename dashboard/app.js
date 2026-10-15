@@ -1,6 +1,23 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 let csrf = '', spaces = [], actors = [], sid = '', tab = 'inbox', cursor = null, loadEpoch = 0, authEpoch = 0, pageSize = 20, operator = false, primaryState = {revision: 0, primary_assistant: null};
+let reportHistory = [];
+let inboxHead = null, updateTimer = null, checkingUpdates = false;
+function stopUpdates() {clearTimeout(updateTimer); updateTimer = null; $('#new-messages').hidden = true; $('#sync-status').hidden = true;}
+function scheduleUpdates() {clearTimeout(updateTimer); updateTimer = setTimeout(async () => {await checkForUpdates(); if (!$('#app').hidden) scheduleUpdates();}, 15000);}
+async function checkForUpdates() {
+  if (checkingUpdates || $('#app').hidden || tab !== 'inbox' || !sid || document.visibilityState === 'hidden') return;
+  const spaceId = sid, epoch = loadEpoch;
+  checkingUpdates = true;
+  try {
+    const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind:'inbox',limit:1});
+    if (spaceId !== sid || epoch !== loadEpoch || tab !== 'inbox') return;
+    $('#sync-status').hidden = true;
+    if (result.items[0]?.message_id && result.items[0].message_id !== inboxHead) $('#new-messages').hidden = false;
+  } catch {
+    if (spaceId === sid && epoch === loadEpoch && !$('#app').hidden) {$('#sync-status').textContent = '暂时无法检查新消息，稍后将重试。也可以点击刷新。'; $('#sync-status').hidden = false;}
+  } finally {checkingUpdates = false;}
+}
 const ot = key => window.waypostOnboardingText(key);
 // Each tab names itself and says what it holds. One table, so the wording
 // cannot drift between the sidebar, the page header and the empty state.
@@ -20,16 +37,25 @@ function el(tag, text, cls) {const node = document.createElement(tag); if (text 
 function button(text, action, cls = 'secondary') {const node = el('button', text, cls); node.type = 'button'; node.addEventListener('click', () => busy(node, action)); return node;}
 function actionButton(key, text, action, cls = 'secondary') {const node = button(text, action, cls); node.dataset.action = key; return node;}
 function notice(message) {$('#notice').textContent = message; $('#notice').hidden = !message; $('#login-error').textContent = message; $('#detail-error').textContent = message; $('#detail-error').hidden = !message;}
-async function busy(node, action) {node.disabled = true; try {notice(''); await action();} catch (error) {notice(error.message);} finally {node.disabled = false;}}
+async function busy(node, action) {node.disabled = true; try {notice(''); await action();} catch (error) {notice(error.message);} finally {node.disabled = node.getAttribute('aria-disabled') === 'true';}}
 async function api(path, method = 'GET', body) {
   const generation = authEpoch;
   const response = await fetch(path, {method, credentials: 'same-origin', headers: {'content-type': 'application/json', 'x-waypost-csrf': csrf}, body: body === undefined ? undefined : JSON.stringify(body)});
   const result = await response.json();
   if (generation !== authEpoch) throw new Error('登录状态已变化，请重新登录后继续。');
-  if (!response.ok || !result.ok) {if (response.status === 401) showLogin(); throw new Error(result.error?.message || `HTTP ${response.status}`);}
+  if (!response.ok || !result.ok) {if (response.status === 401) showLogin(); throw Object.assign(new Error(result.error?.message || `HTTP ${response.status}`), {code:result.error?.code,status:response.status,details:result.error?.details});}
   return result.data;
 }
-function showLogin() {authEpoch++; loadEpoch++; primaryState = {revision: 0, primary_assistant: null}; operator = false; csrf = ''; spaces = []; actors = []; sid = ''; tab = 'inbox'; finishCreation(); $('#detail').close(); $('#detail-title').textContent = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
+async function readBytes(path) {
+  const generation = authEpoch;
+  const response = await fetch(path, {credentials:'same-origin'});
+  if (generation !== authEpoch) throw new Error('登录状态已变化。');
+  if (!response.ok) {if (response.status === 401) showLogin(); throw new Error('无法读取原始文件，请检查连接与权限后重试。');}
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (generation !== authEpoch) throw new Error('登录状态已变化。');
+  return bytes;
+}
+function showLogin() {authEpoch++; loadEpoch++; stopUpdates(); reportHistory = []; inboxHead = null; primaryState = {revision: 0, primary_assistant: null}; operator = false; csrf = ''; spaces = []; actors = []; sid = ''; tab = 'inbox'; finishCreation(); $('#detail').close(); $('#detail-title').textContent = ''; $('#app').hidden = true; $('#login').hidden = false; $('#content').replaceChildren(); $('#detail-body').replaceChildren();}
 async function entered(session) {authEpoch++; primaryState = {revision: 0, primary_assistant: null}; spaces = []; actors = []; sid = ''; $('#space').replaceChildren(); $('#content').replaceChildren(); $('#add-agent').hidden = true; pageSize = Math.max(1, Math.min(20, session.limits?.max_page_size || 20)); operator = session.operator; $('#service-management').hidden = !operator; $('#operator-label').hidden = !operator; $('#invite-user').hidden = !operator; $('#access-requests-tab').hidden = !operator; csrf = session.csrf_token; $('#new-space').hidden = !session.operator; $('#owner-credential').hidden = !session.operator; $('#login').hidden = true; $('#app').hidden = false; await loadSpaces();}
 async function registry(kind, space_id) {
   let cursor = null; const items = [];
@@ -51,7 +77,7 @@ async function load(append = false) {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $('#add-agent').hidden = !['agents', 'inbox'].includes(tab) || !sid;
   $('#subtitle').textContent = sections[tab].note;
-  if (!append) {$('#content').replaceChildren(); cursor = null; $('#more').hidden = true;}
+  if (!append) {$('#content').replaceChildren(); cursor = null; $('#more').hidden = true; $('#new-messages').hidden = true;}
   if (tab === 'access') {const result = await api('/admin/v0/access-requests', 'POST', {limit: pageSize, cursor}); if (epoch !== loadEpoch) return; cursor = result.next_cursor; renderAccessRequests(result.items); $('#more').hidden = !result.has_more; return;}
   if (!sid) {$('#content').append(el('div', '还没有空间。新建一个，开始接入助手。', 'empty')); return;}
   const loadedActors = await registry('actors', spaceId);
@@ -60,10 +86,16 @@ async function load(append = false) {
   const config = await api(`/admin/v0/spaces/${spaceId}/primary-assistant`);
   if (epoch !== loadEpoch) return;
   primaryState = config;
-  if (tab === 'agents') {renderAgents(); return;}
+  if (tab === 'agents') {
+    const history = await api(`/admin/v0/spaces/${spaceId}/connection-status`);
+    if (epoch !== loadEpoch) return;
+    reportHistory = history.actors || [];
+    renderAgents(); return;
+  }
   if (tab === 'privacy') {await renderPrivacy(); return;}
   const result = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: currentTab, limit: pageSize, cursor});
   if (epoch !== loadEpoch) return;
+  if (currentTab === 'inbox' && !append) {inboxHead = result.items[0]?.message_id || null; scheduleUpdates();}
   cursor = result.next_cursor;
   if (!result.items.length && !append) {
     const empty = el('div', undefined, 'empty');
@@ -117,6 +149,12 @@ function renderAgents() {
     const avatar = el('div', actor.display_name.slice(0, 1), 'avatar'); card.append(avatar, el('h2', actor.display_name));
     card.append(el('span', actor.disabled ? '已停用' : actor.kind === 'agent' ? (primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primary') : ot('connected')) : actor.kind === 'user' ? '用户入口' : '客户端', `pill${actor.disabled ? ' disabled' : ''}`));
     card.append(el('p', actor.disabled ? ot('disabledCardHelp') : actor.kind === 'agent' && primaryState.primary_assistant?.actor_id === actor.actor_id ? ot('primaryCardHelp') : ot('connectedCardHelp'), 'fine'));
+    if (actor.kind === 'agent') {
+      const history = reportHistory.find(item => item.actor_id === actor.actor_id);
+      const status = el('p', history?.report_count ? `已投递 ${history.report_count} 份报告 · 最近 ${date(history.last_report_at)}` : '等待第一封信 · 配置后请助手发送测试报告。', 'connection-status');
+      status.dataset.connectionStatus = actor.actor_id; card.append(status);
+      if (history?.report_count) card.append(el('p', '这是该助手的历史投递记录；更换连接后，请发送新的测试报告确认。', 'fine'));
+    }
     const actions = el('div', undefined, 'row');
     const spaceId = sid, epoch = loadEpoch;
     actions.append(button('最近交付', async () => {
@@ -164,23 +202,9 @@ function renderTable(items) {
     }
     const action = el('td'); action.append(button('详情', async () => {
       if (tab === 'collections') {
-        const history = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'memory_revision', resource_id: item.collection_id});
-        if (spaceId !== sid || epoch !== loadEpoch) return;
-        $('#detail-title').textContent = item.display_name;
-        const body = $('#detail-body'); body.replaceChildren(el('p', `来源：${actorName(item.source_actor_id)} · 范围：${item.scope}`));
-        for (const revision of history.revisions) body.append(button(`revision ${revision.revision} · ${revision.active} 条内容`, async () => {
-          const state = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'memory', resource_id: item.collection_id, revision: revision.revision});
-          if (spaceId !== sid || epoch !== loadEpoch) return;
-          body.replaceChildren(el('p', `revision ${state.revision}${state.has_more ? ' · 当前显示前 100 项' : ''}`));
-          for (const entry of state.items) {
-            body.append(el('p', `${entry.path}${entry.deleted_in_revision ? ' · 已删除' : ''}`), button('查看资料', async () => {
-              const content = await api(`/admin/v0/spaces/${spaceId}/inspect`, 'POST', {kind: 'blob_content', resource_id: entry.blob_id});
-              if (spaceId === sid && epoch === loadEpoch) showDetail(entry.path, content.text === null ? content : content.text);
-            }));
-          }
-        }));
-        if (!history.revisions.length) body.append(el('p', 'revision 0 · 空集合'));
-        if (!$('#detail').open) $('#detail').showModal();
+        const generation = authEpoch;
+        await window.WaypostMemory.open({spaceId,collection:item,sourceName:actorName(item.source_actor_id),api,readBytes,el,button,openDetail,run:busy,active:()=>spaceId===sid&&generation===authEpoch});
+        return;
       } else showDetail(sections[tab].title, item);
     }));
     if (tab === 'tokens' && !item.revoked_at) action.append(button('撤销', async () => {await api(`/admin/v0/spaces/${sid}/tokens/${item.token_id}`, 'DELETE', {}); await load();}));
@@ -220,6 +244,9 @@ async function renderPrivacy() {
 $('#login-form').addEventListener('submit', event => {event.preventDefault(); const submit = event.currentTarget.querySelector('button'); busy(submit, async () => {const session = await api('/admin/session', 'POST', {admin_secret: $('#secret').value}); $('#secret').value = ''; await entered(session);});});
 $('#space').addEventListener('change', () => {sid = $('#space').value; $('#detail').close(); $('#detail-body').replaceChildren(); busy($('#refresh'), () => load());});
 $('#refresh').addEventListener('click', () => busy($('#refresh'), () => load()));
+$('#new-messages').addEventListener('click', () => busy($('#new-messages'), () => load()));
+document.addEventListener('visibilitychange', () => {if (document.visibilityState !== 'hidden') checkForUpdates();});
+window.addEventListener('focus', () => checkForUpdates());
 $('#more').addEventListener('click', () => busy($('#more'), () => load(true)));
 $('#logout').addEventListener('click', () => busy($('#logout'), async () => {await api('/admin/session', 'DELETE', {}); finishCreation(); showLogin();}));
 $('#close-detail').addEventListener('click', () => {$('#detail').close(); $('#detail-body').replaceChildren();});

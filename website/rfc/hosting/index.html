@@ -1,9 +1,33 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>运行与部署 — Waypost RFC</title><meta name="description" content="运行与部署。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/hosting/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#原生-rust--sqlite">原生 Rust / SQLite</a><a href="#docker">Docker</a><a href="#cloudflare-本机-d1r2">Cloudflare 本机 D1/R2</a><a href="#cloudflare-远程部署">Cloudflare 远程部署</a><a href="#cloudflare-容量与费用">Cloudflare 容量与费用</a><a href="#当前协议边界">当前协议边界</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>运行与部署</h1><div class="rfc-source-links"><a href="/rfc/source/deployment.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><h2 id="原生-rust--sqlite">原生 Rust / SQLite</h2>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>运行与部署 — Waypost RFC</title><meta name="description" content="运行与部署。Waypost 协议与实现文档，保留原文状态，包含章节目录和可下载源码。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/rfc/hosting/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a><header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/use-cases/">使用场景</a><a href="/rfc/" aria-current="page">RFC</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="/guide/">开始使用 <span aria-hidden="true">↗</span></a></div></header><main id="main" class="container guide-layout rfc-layout"><aside class="guide-toc rfc-toc"><p>OPERATIONS</p><a class="back-link" href="/rfc/">← 所有 RFC 与实现文档</a><nav class="rfc-toc-nav" aria-label="文档章节目录"><a href="#原生-rust--sqlite">原生 Rust / SQLite</a><a href="#原生离线备份与恢复">原生离线备份与恢复</a><a href="#docker">Docker</a><a href="#cloudflare-本机-d1r2">Cloudflare 本机 D1/R2</a><a href="#cloudflare-远程部署">Cloudflare 远程部署</a><a href="#cloudflare-容量与费用">Cloudflare 容量与费用</a><a href="#cloudflare-生产只读备份与恢复核验">Cloudflare 生产只读备份与恢复核验</a><a href="#当前协议边界">当前协议边界</a></nav></aside><article class="guide-article rfc-article"><p class="eyebrow section-label">WAYPOST / OPERATIONS</p><h1>运行与部署</h1><div class="rfc-source-links"><a href="/rfc/source/deployment.md" download>下载 Markdown 原文 ↗</a><a href="/rfc/validation/">查看实现验证 ↗</a></div><p class="notice-box">正文由仓库文档生成，保留原始规范状态和示例。RFC 草案及验证计划与当前实现可能有差异；已验证范围见实现记录，加密与用户隔离升级见 <a href="/rfc/security/">安全说明</a>。</p><div class="rfc-body"><h2 id="原生-rust--sqlite">原生 Rust / SQLite</h2>
 <pre><code class="language-bash">cargo run -- init --data ./var
 cargo run -- serve --data ./var
 </code></pre>
 <p>默认监听 <code>127.0.0.1:8787</code>。管理凭据在 <code>var/admin-secret</code>，Unix 创建权限为 <code>0600</code>；<code>WAYPOST_ADMIN_SECRET</code> 可覆盖。原生 CLI 默认为内容生成独立的 <code>encryption-keys</code>。网页使用 HttpOnly/SameSite 管理会话，Actor 连接使用单独的限权 bearer。<code>WAYPOST_PUBLIC_ORIGIN</code> 设置页面 Origin 和工具返回的上传/下载地址。跨站浏览器调用不提供 CORS；支持 HTTP bearer 的助手后端可以连接 MCP。</p>
-<p>加密根密钥必须单独安全备份。备份需同时保存 <code>metadata.sqlite</code> 与整个 <code>objects/</code> 目录（含其 <code>objects.sqlite</code> 索引）。停止服务后复制可获得一致的原生备份。仅恢复 metadata 或仅导出摘要不构成完整恢复。<code>var/</code>、本地凭据与运行资料均被 Git 忽略。</p>
+<p>加密根密钥必须单独安全备份。备份需同时保存 <code>metadata.sqlite</code> 与整个 <code>objects/</code> 目录（含其 <code>objects.sqlite</code> 索引）。<a href="#%E5%8E%9F%E7%94%9F%E7%A6%BB%E7%BA%BF%E5%A4%87%E4%BB%BD%E4%B8%8E%E6%81%A2%E5%A4%8D">离线备份与恢复</a>提供可运行步骤。仅恢复 metadata 或仅导出摘要不构成完整恢复。<code>var/</code>、本地凭据与运行资料均被 Git 忽略。</p>
+<h2 id="原生离线备份与恢复">原生离线备份与恢复</h2>
+<p>以下步骤适用于 Unix 上的原生服务。先停止 Waypost，再运行仓库里的备份脚本；脚本取得与服务相同的运行锁，服务仍在运行时会拒绝备份。每次使用新的目标目录：</p>
+<pre><code class="language-bash">python3 scripts/backup_native.py \
+  --data ./var \
+  --output /safe-backups/waypost-2026-10-14 \
+  --secrets-output /separate-secrets/waypost-2026-10-14
+</code></pre>
+<p>数据包保存元数据库、可能存在的 SQLite sidecar、整个对象目录及其索引，并记录文件大小和 SHA-256。<code>admin-secret</code>、<code>encryption-keys</code> 放入另一目录，目录权限为 <code>0700</code>、文件为 <code>0600</code>。路径不能互相嵌套，也不能覆盖已有备份。将两个目录分别存入受控存储；只在同一块磁盘上分目录，不能防范磁盘丢失或同一账户被攻破。</p>
+<p>若运行时由 secret manager 或环境变量提供密钥，先通过原有私密渠道将当前值存为受控文件，再分别传入 <code>--encryption-key-file</code>、<code>--admin-secret-file</code>，以及已配置时的 <code>--cursor-secret-file</code>。脚本发现对应环境变量却没有显式文件时会拒绝继续，避免把数据目录里的旧值误当作当前密钥。脚本不会输出秘密值。备份后按原有策略处理这些临时私密文件。</p>
+<p>恢复时停止服务，保留现有数据目录，在另一处新建恢复目录：</p>
+<pre><code class="language-bash">umask 077
+cp -R /safe-backups/waypost-2026-10-14/data ./restored-waypost
+cp /separate-secrets/waypost-2026-10-14/admin-secret ./restored-waypost/admin-secret
+cp /separate-secrets/waypost-2026-10-14/encryption-keys ./restored-waypost/encryption-keys
+chmod 600 ./restored-waypost/admin-secret ./restored-waypost/encryption-keys
+cargo run --release -- serve --data ./restored-waypost --listen 127.0.0.1:8788
+</code></pre>
+<p>恢复目录必须事先不存在。启动前核对备份文件与 <code>manifest.json</code> 中的大小、摘要，并使用与备份兼容的代码版本。若原服务使用独立游标签名密钥，按原 secret 配置恢复 <code>WAYPOST_CURSOR_SECRET</code>；<code>cursor-secret</code> 文件不会被 CLI 自动读取。更换 Origin 后，在客户端更新服务地址。</p>
+<p>用原有用户和助手连接检查消息正文、附件，以及至少两个资料历史版本的原始文件，再决定切换入口。恢复会恢复备份时的授权状态；备份后撤销的连接需要再次撤销。缺少 keyring 时，原生服务拒绝启动；密钥错误时，历史密文无法读取。不要让 CLI 重新生成密钥来替代遗失的历史密钥。</p>
+<p>隔离恢复演练可运行：</p>
+<pre><code class="language-bash">cargo build --locked
+python3 -m unittest discover -s tests -p test_backup_restore.py -v
+</code></pre>
+<p>测试通过公开 HTTP 创建加密消息、附件和两个资料版本，停服备份，恢复到另一目录，再用旧连接逐项读取并比较原始字节。它也验证在线备份被拒绝，以及缺密钥、错密钥无法恢复内容。测试不连接生产服务，也不代表已完成 D1/R2 的生产灾备演练。</p>
 <h2 id="docker">Docker</h2>
 <pre><code class="language-bash">docker compose up --build -d
 docker compose exec waypost cat /data/admin-secret
@@ -64,6 +88,13 @@ wrangler dev --local --port 8791
 </tr>
 </tbody>
 </table></div><p>加密 Worker 在 256 KiB 上限内缓冲、验证和加解密对象；R2 保存认证密文并使用 create-only 条件。未配置加密的本机开发模式仍可使用 FixedLengthStream。获取和封存必须核对实际对象 metadata。R2 有免费额度，超额收费及适用存储类别以账户配置和官方定价为准。<a href="https://developers.cloudflare.com/r2/pricing/">R2 定价</a></p>
+<h2 id="cloudflare-生产只读备份与恢复核验">Cloudflare 生产只读备份与恢复核验</h2>
+<p>生产数据只读备份与本地恢复核验使用仓库脚本，全程不对生产写入（D1 导出与 R2 列举/下载均为读操作）：</p>
+<pre><code class="language-bash">python3 scripts/verify_cloudflare_restore.py \
+  --archive-dir /safe-backups/waypost-cloudflare-2026-10-15
+</code></pre>
+<p>脚本依次完成：D1 <code>--remote</code> 导出；R2 全量列举与下载并逐对象核对大小；将下载字节的 SHA-256 与库内记录的 blob 校验值比对；消息、上传、资料链的引用闭包检查；把快照恢复到全新的本机数据目录并在本机起服，用管理接口逐条读回空间、消息、附件与资料版本；最后封存 AES-256-GCM 加密包、随机备份密钥与 JSON 报告。密钥只通过环境变量传入本机服务，从不写入恢复目录，也不打印秘密值。</p>
+<p>三处恢复时必须对齐的事项：D1 导出只带 Cloudflare 自家的 <code>d1_migrations</code> 台账，原生启动需要按同名迁移文件翻译为 <code>schema_migrations</code> 版本，台账不一致时拒绝恢复；部分迁移语句（无 <code>IF NOT EXISTS</code> 的索引/触发器、表重建、回填）不可重放，禁止直接导入后启动；生产库同时存在明文与密文字段时，本地恢复必须与生产一致开启 <code>WAYPOST_ALLOW_LEGACY_PLAINTEXT</code>，否则旧明文行读取失败。快照边界为“D1 先导出、再完整列举下载 R2”，没有全局写冻结，报告中如实记录。</p>
 <h2 id="当前协议边界">当前协议边界</h2>
 <p>服务提供持久信箱、独立 Consumer 回执、Blob、来源记忆和操作检查。它不执行模型、私人聊天抓取、语义合并或后台任务。<code>oauth</code>、<code>webhook_events</code>、<code>server_export</code> 为 false；客户端导出完整 SQLite/文件包可用。</p>
 <p>v0.1 不自动裁剪已发布历史。Tombstone 是逻辑删除，不代表历史字节或其他客户端副本已被物理清除。可通过 <code>WAYPOST_CURSOR_SECRET</code> 独立设置游标签名密钥。内容使用单独的 <code>WAYPOST_ENCRYPTION_KEYS</code>，旧数据迁移与用户隔离见 <a href="/rfc/security/">安全说明</a>；Actor 凭据按同权限轮换保持游标与 Actor 幂等有效。</p>

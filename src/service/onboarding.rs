@@ -2,6 +2,19 @@ use super::*;
 use crate::{domain::check_id, json::fields, storage::driver::optional_text};
 
 impl<D: Database, O: ObjectStore> App<D, O> {
+    pub(crate) async fn connection_status(&self, sid: &str) -> Result<Value> {
+        self.admin_space(sid).await?;
+        let rows = self.db.query(Statement::new(
+            "SELECT a.actor_id,COUNT(m.message_id) AS report_count,MAX(m.committed_at) AS last_report_at FROM actors a LEFT JOIN messages m ON m.space_id=a.space_id AND m.producer_id=a.actor_id WHERE a.space_id=? AND a.kind='agent' GROUP BY a.actor_id ORDER BY a.actor_id",
+            vec![sid.into()],
+        )).await?;
+        let actors = rows.iter().map(|row| -> Result<Value> {
+            let count = integer(row, "report_count")?;
+            let last = if count > 0 { Some(stamp(integer(row, "last_report_at")?)?) } else { None };
+            Ok(json!({"actor_id":text(row,"actor_id")?,"report_count":count,"last_report_at":last}))
+        }).collect::<Result<Vec<_>>>()?;
+        Ok(json!({"actors":actors}))
+    }
     pub(crate) async fn primary_assistant(
         &self,
         sid: &str,

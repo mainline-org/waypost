@@ -9,6 +9,7 @@
      data: URI is blocked. The brand mark is inlined below instead. -->
 <link rel="stylesheet" href="/dashboard/style.css">
 <script defer src="/dashboard/onboarding-copy.js"></script>
+<script defer src="/dashboard/memory.js"></script>
 <script defer src="/dashboard/app.js"></script>
 </head>
 <body>
@@ -81,6 +82,7 @@
 
     <div class="aside-bottom">
       <p class="fine">自己的空间，自己的助手。</p>
+      <a href="https://waypost.hika.fyi/guide/#trial-support" target="_blank" rel="noopener" class="fine">使用帮助与试用限制 ↗</a>
       <span id="operator-label" class="fine" hidden>当前以服务运行者身份登录</span>
       <button id="logout" class="secondary">退出登录</button>
     </div>
@@ -100,6 +102,8 @@
     </header>
 
     <div id="notice" class="notice" role="status" hidden></div>
+    <p id="sync-status" class="fine" role="status" hidden></p>
+    <button id="new-messages" type="button" hidden>有新报告，点击查看</button>
     <section id="content" aria-live="polite"></section>
     <button id="more" class="secondary" hidden>加载更多</button>
   </main>
