@@ -90,14 +90,24 @@ async fn dashboard_serves_i18n_assets_with_matching_locales() {
     }
     let en: Value = serde_json::from_slice(
         &f.app
-            .handle(Request::json("GET", "/dashboard/locales/en.json", "", json!({})))
+            .handle(Request::json(
+                "GET",
+                "/dashboard/locales/en.json",
+                "",
+                json!({}),
+            ))
             .await
             .body,
     )
     .unwrap();
     let zh: Value = serde_json::from_slice(
         &f.app
-            .handle(Request::json("GET", "/dashboard/locales/zh.json", "", json!({})))
+            .handle(Request::json(
+                "GET",
+                "/dashboard/locales/zh.json",
+                "",
+                json!({}),
+            ))
             .await
             .body,
     )

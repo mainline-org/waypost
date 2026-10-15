@@ -22,7 +22,7 @@ function page(hash=''){
    return {ok:response.ok,status:response.status,json:async()=>value};
    } finally {pendingRequests--;}
  };
- w.eval(readFileSync(new URL('../../dashboard/onboarding-copy.js',import.meta.url),'utf8'));
+ w.eval(readFileSync(new URL('../../dashboard/i18n.js',import.meta.url),'utf8'));
  w.eval(readFileSync(new URL('../../dashboard/app.js',import.meta.url),'utf8'));
  return w;
 }
