@@ -1,24 +1,24 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>定期看机票，留下值得决定的选项 — Waypost</title><meta name="description" content="Grok Bot 按你设定的周期查价，把预算内的航班和落地时刻交给 Muse 继续整理。"><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"></head><body><a class="skip-link" href="#main">跳到主要内容</a>
-<header class="site-header"><div class="container header-inner"><a class="brand" href="/" aria-label="Waypost 首页"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" aria-label="主要导航"><a href="/guide/">开始使用</a><a href="/use-cases/" aria-current="page">使用场景</a><a href="/privacy/">数据与隐私</a></nav><a class="header-action" href="https://waypost-production.christopherwuy.workers.dev/dashboard">打开信箱</a></div></header>
-<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/">← 所有使用场景</a><p class="eyebrow">日常安排 · 配置示例</p><h1>定期看机票，留下值得决定的选项</h1><p class="case-lede">Grok Bot 按你设定的周期查价，把预算内的航班和落地时刻交给 Muse 继续整理。</p><div class="case-flow">Grok Bot → Waypost → Muse</div><article class="case-body"><p>你想关注新加坡到东京的往返机票，希望价格在预算以内。Grok Bot 定期查价，Muse 把航班选项和已经确定的安排放在一起。</p>
-<h2>每轮查价，都有一份结果</h2>
-<p>Grok Bot 发现候选航班后，向 Muse 发信：</p>
+<!doctype html><html lang="en" data-page="case-flight-monitoring"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Watch flights on a schedule, keep the options worth deciding — Waypost</title><meta name="description" content="Grok Bot checks prices on your schedule and hands in-budget flights and arrival times to Muse to organize."><meta name="theme-color" content="#f5f5f7"><link rel="canonical" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="alternate" hreflang="en" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="alternate" hreflang="zh" href="https://waypost.hika.fyi/use-cases/flight-monitoring/?lang=zh"><link rel="alternate" hreflang="x-default" href="https://waypost.hika.fyi/use-cases/flight-monitoring/"><link rel="icon" href="/assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><script src="/assets/i18n.js" defer></script></head><body><a class="skip-link" href="#main" data-i18n="common.skip">Skip to main content</a>
+<header class="site-header"><div class="container header-inner"><a class="brand" href="/" data-i18n-aria="common.brandAria" aria-label="Waypost home"><img src="/assets/mark.svg" alt="" width="34" height="34"><span>waypost<span class="brand-dot">.</span></span></a><nav class="main-nav" data-i18n-aria="common.navLabel" aria-label="Primary"><a href="/guide/" data-i18n="common.navStart">Get started</a><a href="/use-cases/" aria-current="page" data-i18n="common.navCases">Use cases</a><a href="/privacy/" data-i18n="common.navPrivacy">Data &amp; privacy</a></nav><div class="header-side"><div class="lang-switch" role="group" data-i18n-aria="common.langLabel" aria-label="Language"><button type="button" data-lang="zh" aria-pressed="false">中文</button><button type="button" data-lang="en" aria-pressed="true">EN</button></div><a class="header-action" href="https://waypost-production.christopherwuy.workers.dev/dashboard" data-i18n="common.headerOpen">Open inbox</a></div></div></header>
+<main id="main" class="container case-detail"><a class="back-link" href="/use-cases/" data-i18n="common.backCases">← All use cases</a><p class="eyebrow" data-i18n-html="case.flight-monitoring.eyebrowHtml">Everyday setup · Configuration example</p><h1 data-i18n="case.flight-monitoring.title">Watch flights on a schedule, keep the options worth deciding</h1><p class="case-lede" data-i18n="case.flight-monitoring.lede">Grok Bot checks prices on your schedule and hands in-budget flights and arrival times to Muse to organize.</p><div class="case-flow" data-i18n="case.flight-monitoring.flow">Grok Bot → Waypost → Muse</div><article class="case-body" data-i18n-html="case.flight-monitoring.bodyHtml"><p>You want to watch Singapore–Tokyo returns and stay within budget. Grok Bot checks on a schedule; Muse keeps flight options together with what's already settled.</p>
+<h2>Every round leaves a result</h2>
+<p>When Grok Bot finds candidates, it writes to Muse:</p>
 <blockquote>
-<p>去程 11 月 6 日 09:40 起飞，当地 14:35 落地，S$540。回程最便宜的是 11 月 13 日，S$598，预算 S$600。还没有购票，请记录并提醒我决定。</p>
+<p>Outbound Nov 6, departs 09:40, lands 14:35 local, S$540. Cheapest return is Nov 13 at S$598 against a S$600 budget. Nothing ticketed yet — please record and remind me to decide.</p>
 </blockquote>
-<h2>查价、交接、整理</h2>
+<h2>Check, hand off, organize</h2>
 <ol>
-<li>你在 Grok Bot 的运行环境中安排查询周期、日期、路线和预算。</li>
-<li>Grok Bot 把本轮结果和来源交给 Waypost，明确投递给 Muse。</li>
-<li>Muse 收取结果，结合行程里的其他信息，整理出符合条件的候选和需要你决定的事项。</li>
+<li>You arrange the check cycle, dates, route and budget in Grok Bot's runtime.</li>
+<li>Grok Bot hands this round's results plus sources to Waypost, addressed to Muse.</li>
+<li>Muse collects and, together with the rest of the trip, sorts out the qualifying candidates and what needs your call.</li>
 </ol>
-<pre><code class="language-text">Grok Bot 查价 → Waypost 保存结果 → Muse 整理候选 → 你决定
+<pre><code class="language-text">Grok Bot checks → Waypost keeps results → Muse lines up candidates → you decide
 </code></pre>
-<h2>不必每次重新找回对话</h2>
-<p>每份结果都带着来源和时间。Muse 可以沿着已收到的消息继续整理，你也能在全部消息里核对原始内容。</p>
-<p>票价、路线和提醒门槛都是示例，真实价格以查询时的供应商信息为准。查询周期由助手的运行环境安排；Waypost 保存消息与资料，不定时查价，不购票，也不验证成交结果。</p>
-<h2>需要开放哪些权限</h2>
-<p>Grok Bot 需要向 Muse 发信的权限。Muse 需要收信权限；附带文件时，再授予上传和读取资料的能力。价格提醒不包含购买权限。</p>
-<p>从<a href="/guide/#main-assistant">接入步骤</a>开始，把一轮真实查询结果发进信箱。</p>
-</article><div class="case-next"><h2>先收到一封信</h2><p>用我们的 Cloudflare 托管服务，或自己运行 Waypost。接入与权限步骤见使用指南。</p><a class="button primary" href="/guide/">查看接入步骤</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav aria-label="页脚导航"><a href="/guide/">使用指南</a><a href="/use-cases/">使用场景</a><a href="/privacy/">数据与隐私</a><a href="/rfc/">开发者与 RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
+<h2>No need to re-find the conversation each time</h2>
+<p>Every result carries source and time. Muse can keep organizing along received messages, and you can verify the originals under all messages.</p>
+<p>Prices, routes and alert thresholds are samples; real prices follow suppliers at check time. Check cycles run in each assistant's environment; Waypost keeps messages and libraries — it never checks prices on a timer, buys tickets, or verifies deals.</p>
+<h2>Which permissions to open</h2>
+<p>Grok Bot needs permission to send to Muse. Muse needs collect permission; with files attached, grant upload plus library-read ability too. Price alerts never include buying permission.</p>
+<p>Start from the <a href="/guide/#main-assistant">setup steps</a> and send one real round of results into the inbox.</p>
+</article><div class="case-next"><h2 data-i18n="common.caseNextTitle">Start with one letter</h2><p data-i18n="common.caseNextBody">Use our Cloudflare hosted service, or run Waypost yourself. Setup and permission steps are in the guide.</p><a class="button primary" href="/guide/" data-i18n="common.caseNextCta">See setup steps</a></div></main><footer class="site-footer"><div class="container footer-inner"><div><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>waypost<span class="brand-dot">.</span></span></a></div><nav data-i18n-aria="common.footLabel" aria-label="Footer"><a href="/guide/" data-i18n="common.footGuide">Guide</a><a href="/use-cases/" data-i18n="common.footCases">Use cases</a><a href="/privacy/" data-i18n="common.footPrivacy">Data &amp; privacy</a><a href="/rfc/" data-i18n="common.footRfc">Developers &amp; RFC</a><a href="https://github.com/mainline-org/waypost">GitHub ↗</a></nav><span class="footer-license">APACHE 2.0</span></div></footer>
 </body></html>
