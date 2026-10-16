@@ -18,7 +18,7 @@ async function dashboard(extra = () => null) {
       return {ok:true,status:200,json:async()=>JSON.parse(readFileSync(new URL('../dashboard/locales/'+file,import.meta.url),'utf8'))};
     }
     const body=options.body?JSON.parse(options.body):{};
-    let data=extra(path,body,options);
+    let data=await extra(path,body,options);
     if(data instanceof Response)return data;
     if(data===null) data=path==='/admin/session'?{csrf_token:'test',operator:false,limits:{max_page_size:20,max_blob_bytes:262144,max_collection_items:32}}:path==='/admin/v0/registry'?{items:body.kind==='spaces'?[{space_id:'space-one',display_name:'My space',default_actor_id:'owner'}]:body.kind==='actors'?actors:[],has_more:false}:path.endsWith('/primary-assistant')?{revision:0,primary_assistant:null}:path.endsWith('/connection-status')?{actors:[{actor_id:'agent-one',report_count:0,last_report_at:null}]}:{items:[],has_more:false};
     return {ok:true,status:200,json:async()=>({ok:true,data})};
@@ -65,6 +65,55 @@ test('owner edits a current text item and exports the new fixed version with its
     assert(bytes.includes(Buffer.from('I prefer coffee.')));
     assert(bytes.includes(Buffer.from('manifest.json')));
   }finally {w.close();}
+});
+
+for(const outcome of ['success','failure','conflict','navigation'])test(`the editor is read-only throughout both save phases and recovers after ${outcome}`,async()=>{
+  let revision=1,text='Original preference.',releasePrepare,releasePublish,preparedText;
+  const {w,d}=await dashboard((path,body)=>{
+    if(path.endsWith('/inspect'))return body.kind==='collections'?{items:[{collection_id:'col-one',display_name:'Preferences',source_actor_id:'agent-one'}],has_more:false}:body.kind==='memory_revision'?{revisions:[{revision}]}:{items:[],has_more:false};
+    if(path.endsWith('/memory/col-one/read'))return {collection_id:'col-one',revision,items:[{item_id:'item-one',blob_id:'blob-one',path:'preference.md',size_bytes:Buffer.byteLength(text),sha256:createHash('sha256').update(text).digest('hex'),content_type:'text/plain'}],has_more:false};
+    if(path.endsWith('/blobs/blob-one/content'))return new Response(text);
+    if(path.endsWith('/edit/prepare')){preparedText=body.text;return new Promise(resolve=>{releasePrepare=resolve;});}
+    if(path.endsWith('/edit'))return new Promise(resolve=>{releasePublish=resolve;});
+    return null;
+  });
+  try {
+    await wait(()=>!d.querySelector('#app').hidden&&d.querySelector('#content').children.length);
+    d.querySelector('[data-tab=collections]').click();await wait(()=>d.querySelector('#content td button'));
+    d.querySelector('#content td button').click();await wait(()=>d.querySelector('[data-memory-item]'));
+    d.querySelector('[data-memory-item]').click();await wait(()=>d.querySelector('[data-memory-editor]'));
+    const editor=d.querySelector('[data-memory-editor]');editor.value='My correction.';
+    const save=d.querySelector('[data-memory-save]');save.click();await wait(()=>releasePrepare);
+    assert.equal(editor.readOnly,true,'Typing must be prevented while the submitted draft is being saved.');
+    if(outcome==='conflict'){
+      revision=2;text='Updated by another assistant.';
+      releasePrepare(Response.json({ok:false,error:{code:'REVISION_CONFLICT',message:'Changed.'}},{status:409}));
+      await wait(()=>d.querySelector('[data-memory-rebase]'));
+      assert.equal(editor.readOnly,false);
+      assert.equal(editor.value,'My correction.');
+      assert.equal(d.querySelector('[data-memory-latest]').value,text);
+    }else{
+      releasePrepare({blob_id:'prepared-blob'});await wait(()=>releasePublish);
+      assert.equal(editor.readOnly,true,'The final publication must keep the editor locked too.');
+      if(outcome==='navigation'){
+        d.querySelector('[data-memory-return]').click();await wait(()=>d.querySelector('[data-memory-draft]'));
+        d.querySelector('[data-memory-draft]').click();await wait(()=>d.querySelector('[data-memory-editor]'));
+        const continued=d.querySelector('[data-memory-editor]');continued.value='A newer unsaved correction.';continued.dispatchEvent(new w.Event('input'));
+        revision=2;text=preparedText;releasePublish({revision:2});await wait(()=>!save.disabled);
+        assert.equal(d.querySelector('[data-memory-editor]'),continued,'A completed save must not replace a subsequently opened editor.');
+        assert.equal(continued.value,'A newer unsaved correction.');
+      }else if(outcome==='failure'){
+        releasePublish(Response.json({ok:false,error:{code:'STORAGE_UNAVAILABLE',message:'Try again.'}},{status:503}));
+        await wait(()=>d.querySelector('#detail-error').textContent.includes('Try again.'));
+        assert.equal(editor.readOnly,false);
+        assert.equal(editor.value,'My correction.');
+      }else{
+        revision=2;text=preparedText;releasePublish({revision:2});
+        await wait(()=>d.querySelector('[data-memory-export]')&&d.querySelector('#detail-body').textContent.includes('版本 2'));
+        assert.equal(text,'My correction.');
+      }
+    }
+  }finally{w.close();}
 });
 
 test('returning to the inbox announces a new report without clearing the current list or acknowledging it',async()=>{
