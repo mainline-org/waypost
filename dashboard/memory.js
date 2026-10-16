@@ -27,12 +27,13 @@ window.WaypostMemory = (() => {
   }
   async function open(context) {
     const {spaceId,collection,api,el,button,openDetail}=context,root=`/admin/v0/spaces/${spaceId}/memory/${collection.collection_id}`;
-    let latest=null,current=null,history=[];
+    let latest=null,current=null,history=[],viewEpoch=0;
     // Drafts live only in this open library, never in browser storage.
     const drafts=new Map();
     const read=(revision,cursor=null)=>api(root+'/read','POST',{revision,cursor,limit:20,include_tombstones:true});
     async function showItem(item,page,retained=null) {
-      const bytes=retained?null:await checkedBytes(context,item);if(!context.active())return;
+      const epoch=++viewEpoch,viewActive=()=>context.active()&&epoch===viewEpoch;
+      const bytes=retained?null:await checkedBytes(context,item);if(!viewActive())return;
       const isText=/^text\//i.test(item.content_type)||/^application\/(?:json|[^;]+\+json)(?:;|$)/i.test(item.content_type);
       if(!isText){openDetail(item.path,el('p',t('mem.binaryNote')));return;}
       let text;try{text=retained?retained.text:new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new Error(t('mem.notUtf8')); }
@@ -48,7 +49,7 @@ window.WaypostMemory = (() => {
       async function compareLatest() {
         remember();draft.conflict=true;save.disabled=true;save.setAttribute('aria-disabled','true');
         status.textContent=t('mem.conflictKept');
-        const head=await read(null);if(!context.active())return;latest=head.revision;
+        const head=await read(null);if(!viewActive())return;latest=head.revision;
         history=(await api(`/admin/v0/spaces/${spaceId}/inspect`,'POST',{kind:'memory_revision',resource_id:collection.collection_id})).revisions;
         let target=head.items.find(value=>value.item_id===item.item_id),part=head;const seen=new Set();
         while(!target&&part.has_more){
@@ -57,10 +58,10 @@ window.WaypostMemory = (() => {
           if(part.revision!==head.revision)throw new Error(t('mem.versionChangedCompare'));
           target=part.items.find(value=>value.item_id===item.item_id);
         }
-        if(!context.active())return;comparison.replaceChildren(el('p',t('mem.currentRev',{rev:head.revision})));
+        if(!viewActive())return;comparison.replaceChildren(el('p',t('mem.currentRev',{rev:head.revision})));
         if(!target||target.deleted_in_revision){comparison.append(el('p',t('mem.itemDeleted')));return;}
         const latestText=new TextDecoder('utf-8',{fatal:true}).decode(await checkedBytes(context,target));
-        if(!context.active())return;
+        if(!viewActive())return;
         const preview=el('textarea');preview.value=latestText;preview.readOnly=true;preview.rows=8;preview.dataset.memoryLatest='';preview.setAttribute('aria-label',t('mem.latestContent',{rev:head.revision}));comparison.append(preview);
         const rebase=button(t('mem.rebase',{rev:head.revision}),async()=>{
           draft.baseRevision=head.revision;draft.attempt=null;draft.conflict=false;save.disabled=false;save.setAttribute('aria-disabled','false');rebase.disabled=true;rebase.setAttribute('aria-disabled','true');
@@ -72,11 +73,18 @@ window.WaypostMemory = (() => {
           remember();
           if(!draft.attempt||draft.attempt.text!==editor.value)draft.attempt={request_id:crypto.randomUUID(),expected_revision:draft.baseRevision,item_id:item.item_id,text:editor.value};
           const attempt=draft.attempt;
+          const readOnly=editor.readOnly;editor.readOnly=true;
           try {
             if(!attempt.blob_id){const prepared=await api(root+'/edit/prepare','POST',attempt);if(!context.active())return;attempt.blob_id=prepared.blob_id;}
+            if(!viewActive())return;
             const result=await api(root+'/edit','POST',{request_id:attempt.request_id,expected_revision:attempt.expected_revision,item_id:attempt.item_id,blob_id:attempt.blob_id});
-            if(!context.active())return;drafts.delete(item.item_id);latest=result.revision;await showVersion(result.revision,t('mem.savedAs',{rev:result.revision}));
-          }catch(error){if(error.code==='REVISION_CONFLICT'){await compareLatest();return;}throw error;}
+            if(!context.active())return;
+            latest=Math.max(latest??0,result.revision);
+            if(draft.text===attempt.text&&draft.attempt===attempt)drafts.delete(item.item_id);
+            if(!viewActive())return;
+            await showVersion(result.revision,t('mem.savedAs',{rev:result.revision}));
+          }catch(error){if(!viewActive())return;if(error.code==='REVISION_CONFLICT'){await compareLatest();return;}throw error;}
+          finally{editor.readOnly=readOnly;}
         });save.dataset.memorySave='';form.append(save);
       }
       form.append(comparison);form.addEventListener('submit',event=>event.preventDefault());
@@ -120,7 +128,7 @@ window.WaypostMemory = (() => {
       link.href=url;link.download=`waypost-memory-${collection.collection_id}-v${revision}.zip`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
     async function showVersion(revision,notice='') {
-      const page=await read(revision);if(!context.active())return;current=page;if(latest===null||revision===null)latest=page.revision;
+      const epoch=++viewEpoch,page=await read(revision);if(!context.active()||epoch!==viewEpoch)return;current=page;if(latest===null||revision===null)latest=page.revision;
       const body=el('div',undefined,'memory-library'),label=el('label',t('mem.viewVersion')),select=el('select');
       const revisions=[...new Set([latest,page.revision,...history.map(item=>item.revision)])].sort((a,b)=>b-a);
       for(const value of revisions){const option=el('option',t('mem.versionOpt',{v:value})+(value===latest?t('mem.versionCurrent'):''));option.value=String(value);select.append(option);}select.value=String(page.revision);label.append(select);

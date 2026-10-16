@@ -87,29 +87,37 @@ def check_host(binary, directory, env):
             endpoint = f'http://127.0.0.1:{port}/api/mcp'
             result = None
             failure = None
-            def connected(value):
-                # HTTP 200 with a JSON object already proves the handshake:
-                # v2.0.20 answers authentication with its host location and an
-                # (initially empty) MCP inventory, without any status string.
+            def waypost_connected(value):
+                # Reachability and an empty inventory do not prove an MCP
+                # handshake. Require the named server's explicit host state.
+                def connected(server):
+                    if not isinstance(server, dict):
+                        return False
+                    status = server.get('status', server.get('_tag'))
+                    if isinstance(status, dict):
+                        status = status.get('_tag', status.get('status'))
+                    return isinstance(status, str) and status.lower() == 'connected'
+
                 if isinstance(value, dict):
-                    if str(value.get('status', '')).lower() == 'connected' or str(value.get('_tag', '')).lower() == 'connected':
+                    if connected(value.get('waypost')):
                         return True
-                    if 'location' in value and 'data' in value:
+                    if value.get('name', value.get('id')) == 'waypost' and connected(value):
                         return True
-                    return any(connected(item) for item in value.values())
-                return isinstance(value, list) and any(connected(item) for item in value)
+                    return any(waypost_connected(value[key])
+                               for key in ('data', 'servers') if key in value)
+                return isinstance(value, list) and any(waypost_connected(item) for item in value)
             for _ in range(60):
                 if child.poll() is not None:
-                    if connected(result):
-                        break
-                    time.sleep(.2)
+                    break
                 try:
                     log_text = log.read_text(errors='replace')
                     password = re.search(r'^server password (\S+)', log_text, re.M)
                     headers = {} if not password else {'Authorization': 'Basic ' + base64.b64encode(('opencode:' + password.group(1)).encode()).decode()}
                     with urllib.request.urlopen(urllib.request.Request(endpoint, headers=headers), timeout=2) as response:
                         result = json.load(response)
-                    break
+                    if waypost_connected(result):
+                        break
+                    time.sleep(.2)
                 except urllib.error.HTTPError as error:
                     failure = {'status': error.code, 'body': error.read().decode(errors='replace')}
                     time.sleep(.2)
@@ -121,11 +129,12 @@ def check_host(binary, directory, env):
                     private_json(directory / 'host-config.json', json.load(response))
             elif failure is not None:
                 private_json(directory / 'connection-error.json', failure)
-            if result is None or not connected(result):
+            if not waypost_connected(result):
                 raise RuntimeError('Actual OpenCode MCP connection failed; inspect the private connection log.')
         finally:
-            os.killpg(child.pid, signal.SIGTERM)
-            child.wait(timeout=10)
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGTERM)
+                child.wait(timeout=10)
 
 
 def main():
